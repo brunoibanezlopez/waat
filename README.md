@@ -74,7 +74,5 @@ Current aggregate results:
 
 The prototype is intentionally small, but the pattern is motivated by production
 customer-service agents where workflows are larger and more numerous. In
-production, a super-agent may coordinate assurance, billing, cancellations,
-customer care, service inventory, ticket updates, and account administration.
-WaaT keeps this procedural complexity out of the prompt and exposes only the
-current workflow state through tools.
+production, a super-agent may coordinate multiple sub-agents to perform an end-to-end complex
+task
