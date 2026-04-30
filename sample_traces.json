@@ -1,0 +1,369 @@
+{
+  "TC-01": {
+    "case": {
+      "case_id": "TC-01",
+      "customer_id": "ACCT-001",
+      "request_text": "Can you tell me my current account balance and whether my last payment cleared?",
+      "expected_terminal_state": "REQUEST_COMPLETE",
+      "expected_path": [
+        "CLASSIFY_REQUEST",
+        "HANDLE_ACCOUNT_QUERY",
+        "REQUEST_COMPLETE"
+      ],
+      "metadata": {
+        "category": "account",
+        "query_type": "balance"
+      }
+    },
+    "actual_path": [
+      "CLASSIFY_REQUEST",
+      "HANDLE_ACCOUNT_QUERY",
+      "REQUEST_COMPLETE"
+    ],
+    "terminal_state": "REQUEST_COMPLETE",
+    "trace": [
+      {
+        "state": "CLASSIFY_REQUEST",
+        "state_spec_visible_to_agent": {
+          "state_id": "CLASSIFY_REQUEST",
+          "action": "call_classifier_agent",
+          "action_params": {
+            "customer_id": "",
+            "request_text": ""
+          },
+          "transitions": [
+            {
+              "to": "HANDLE_ACCOUNT_QUERY",
+              "condition": "request relates to account information or balance"
+            },
+            {
+              "to": "HANDLE_SERVICE_CHANGE",
+              "condition": "request is a service modification or upgrade"
+            },
+            {
+              "to": "HANDLE_COMPLAINT",
+              "condition": "request contains a complaint or dissatisfaction"
+            },
+            {
+              "to": "REQUEST_ESCALATED",
+              "condition": "request cannot be classified or contains sensitive content"
+            }
+          ]
+        },
+        "action": "call_classifier_agent",
+        "action_result": {
+          "agent": "classifier",
+          "classification": "account_query",
+          "confidence": 0.94,
+          "rationale": "Request text maps to account_query based on category cues.",
+          "ambiguous_signal": false,
+          "recommended_next_state": "HANDLE_ACCOUNT_QUERY"
+        },
+        "next_state": "HANDLE_ACCOUNT_QUERY",
+        "reasoning": "The workflow is currently in CLASSIFY_REQUEST and the visible state specification permits a transition to HANDLE_ACCOUNT_QUERY. The simulated classifier agent returned structured evidence indicating this outcome, so selecting HANDLE_ACCOUNT_QUERY follows the observed action result and the transition conditions for customer ACCT-001.",
+        "update_result": {
+          "status": "ok",
+          "current_state_id": "HANDLE_ACCOUNT_QUERY",
+          "from_state": "CLASSIFY_REQUEST",
+          "to_state": "HANDLE_ACCOUNT_QUERY",
+          "reasoning": "The workflow is currently in CLASSIFY_REQUEST and the visible state specification permits a transition to HANDLE_ACCOUNT_QUERY. The simulated classifier agent returned structured evidence indicating this outcome, so selecting HANDLE_ACCOUNT_QUERY follows the observed action result and the transition conditions for customer ACCT-001.",
+          "reasoning_word_count": 41
+        },
+        "tokens": 157,
+        "baseline_tokens": 351
+      },
+      {
+        "state": "HANDLE_ACCOUNT_QUERY",
+        "state_spec_visible_to_agent": {
+          "state_id": "HANDLE_ACCOUNT_QUERY",
+          "action": "call_account_agent",
+          "action_params": {
+            "customer_id": "",
+            "query_type": ""
+          },
+          "transitions": [
+            {
+              "to": "REQUEST_COMPLETE",
+              "condition": "query answered and customer confirmed satisfied"
+            },
+            {
+              "to": "HANDLE_COMPLAINT",
+              "condition": "customer dissatisfied with account information provided"
+            },
+            {
+              "to": "REQUEST_ESCALATED",
+              "condition": "account data unavailable or agent cannot resolve"
+            }
+          ]
+        },
+        "action": "call_account_agent",
+        "action_result": {
+          "agent": "account",
+          "query_type": "balance",
+          "account_summary": "Recent balance, payment status, and contact details retrieved.",
+          "customer_satisfied": true,
+          "data_available": true,
+          "recommended_next_state": "REQUEST_COMPLETE"
+        },
+        "next_state": "REQUEST_COMPLETE",
+        "reasoning": "The workflow is currently in HANDLE_ACCOUNT_QUERY and the visible state specification permits a transition to REQUEST_COMPLETE. The simulated account agent returned structured evidence indicating this outcome, so selecting REQUEST_COMPLETE follows the observed action result and the transition conditions for customer ACCT-001.",
+        "update_result": {
+          "status": "ok",
+          "current_state_id": "REQUEST_COMPLETE",
+          "from_state": "HANDLE_ACCOUNT_QUERY",
+          "to_state": "REQUEST_COMPLETE",
+          "reasoning": "The workflow is currently in HANDLE_ACCOUNT_QUERY and the visible state specification permits a transition to REQUEST_COMPLETE. The simulated account agent returned structured evidence indicating this outcome, so selecting REQUEST_COMPLETE follows the observed action result and the transition conditions for customer ACCT-001.",
+          "reasoning_word_count": 41
+        },
+        "tokens": 140,
+        "baseline_tokens": 349
+      }
+    ],
+    "reasoning_scores": [
+      5,
+      5
+    ]
+  },
+  "TC-09": {
+    "case": {
+      "case_id": "TC-09",
+      "customer_id": "SVC-001",
+      "request_text": "Please upgrade our fibre internet service to the next speed tier from next month.",
+      "expected_terminal_state": "REQUEST_COMPLETE",
+      "expected_path": [
+        "CLASSIFY_REQUEST",
+        "HANDLE_SERVICE_CHANGE",
+        "REQUEST_COMPLETE"
+      ],
+      "metadata": {
+        "category": "service",
+        "change_type": "upgrade"
+      }
+    },
+    "actual_path": [
+      "CLASSIFY_REQUEST",
+      "HANDLE_SERVICE_CHANGE",
+      "REQUEST_COMPLETE"
+    ],
+    "terminal_state": "REQUEST_COMPLETE",
+    "trace": [
+      {
+        "state": "CLASSIFY_REQUEST",
+        "state_spec_visible_to_agent": {
+          "state_id": "CLASSIFY_REQUEST",
+          "action": "call_classifier_agent",
+          "action_params": {
+            "customer_id": "",
+            "request_text": ""
+          },
+          "transitions": [
+            {
+              "to": "HANDLE_ACCOUNT_QUERY",
+              "condition": "request relates to account information or balance"
+            },
+            {
+              "to": "HANDLE_SERVICE_CHANGE",
+              "condition": "request is a service modification or upgrade"
+            },
+            {
+              "to": "HANDLE_COMPLAINT",
+              "condition": "request contains a complaint or dissatisfaction"
+            },
+            {
+              "to": "REQUEST_ESCALATED",
+              "condition": "request cannot be classified or contains sensitive content"
+            }
+          ]
+        },
+        "action": "call_classifier_agent",
+        "action_result": {
+          "agent": "classifier",
+          "classification": "service_change",
+          "confidence": 0.94,
+          "rationale": "Request text maps to service_change based on category cues.",
+          "ambiguous_signal": false,
+          "recommended_next_state": "HANDLE_SERVICE_CHANGE"
+        },
+        "next_state": "HANDLE_SERVICE_CHANGE",
+        "reasoning": "The workflow is currently in CLASSIFY_REQUEST and the visible state specification permits a transition to HANDLE_SERVICE_CHANGE. The simulated classifier agent returned structured evidence indicating this outcome, so selecting HANDLE_SERVICE_CHANGE follows the observed action result and the transition conditions for customer SVC-001.",
+        "update_result": {
+          "status": "ok",
+          "current_state_id": "HANDLE_SERVICE_CHANGE",
+          "from_state": "CLASSIFY_REQUEST",
+          "to_state": "HANDLE_SERVICE_CHANGE",
+          "reasoning": "The workflow is currently in CLASSIFY_REQUEST and the visible state specification permits a transition to HANDLE_SERVICE_CHANGE. The simulated classifier agent returned structured evidence indicating this outcome, so selecting HANDLE_SERVICE_CHANGE follows the observed action result and the transition conditions for customer SVC-001.",
+          "reasoning_word_count": 41
+        },
+        "tokens": 157,
+        "baseline_tokens": 351
+      },
+      {
+        "state": "HANDLE_SERVICE_CHANGE",
+        "state_spec_visible_to_agent": {
+          "state_id": "HANDLE_SERVICE_CHANGE",
+          "action": "call_service_agent",
+          "action_params": {
+            "customer_id": "",
+            "change_type": ""
+          },
+          "transitions": [
+            {
+              "to": "REQUEST_COMPLETE",
+              "condition": "service change completed and customer confirmed"
+            },
+            {
+              "to": "REQUEST_ESCALATED",
+              "condition": "change cannot be processed or requires manual approval"
+            }
+          ]
+        },
+        "action": "call_service_agent",
+        "action_result": {
+          "agent": "service",
+          "change_type": "upgrade",
+          "completed": true,
+          "manual_approval_required": false,
+          "confirmation": "Change submitted to the service platform.",
+          "recommended_next_state": "REQUEST_COMPLETE"
+        },
+        "next_state": "REQUEST_COMPLETE",
+        "reasoning": "The workflow is currently in HANDLE_SERVICE_CHANGE and the visible state specification permits a transition to REQUEST_COMPLETE. The simulated service agent returned structured evidence indicating this outcome, so selecting REQUEST_COMPLETE follows the observed action result and the transition conditions for customer SVC-001.",
+        "update_result": {
+          "status": "ok",
+          "current_state_id": "REQUEST_COMPLETE",
+          "from_state": "HANDLE_SERVICE_CHANGE",
+          "to_state": "REQUEST_COMPLETE",
+          "reasoning": "The workflow is currently in HANDLE_SERVICE_CHANGE and the visible state specification permits a transition to REQUEST_COMPLETE. The simulated service agent returned structured evidence indicating this outcome, so selecting REQUEST_COMPLETE follows the observed action result and the transition conditions for customer SVC-001.",
+          "reasoning_word_count": 41
+        },
+        "tokens": 126,
+        "baseline_tokens": 346
+      }
+    ],
+    "reasoning_scores": [
+      5,
+      5
+    ]
+  },
+  "TC-17": {
+    "case": {
+      "case_id": "TC-17",
+      "customer_id": "COMP-001",
+      "request_text": "I am unhappy that our internet has dropped three times this week and want this fixed.",
+      "expected_terminal_state": "REQUEST_COMPLETE",
+      "expected_path": [
+        "CLASSIFY_REQUEST",
+        "HANDLE_COMPLAINT",
+        "REQUEST_COMPLETE"
+      ],
+      "metadata": {
+        "category": "complaint",
+        "complaint_type": "reliability"
+      }
+    },
+    "actual_path": [
+      "CLASSIFY_REQUEST",
+      "HANDLE_COMPLAINT",
+      "REQUEST_COMPLETE"
+    ],
+    "terminal_state": "REQUEST_COMPLETE",
+    "trace": [
+      {
+        "state": "CLASSIFY_REQUEST",
+        "state_spec_visible_to_agent": {
+          "state_id": "CLASSIFY_REQUEST",
+          "action": "call_classifier_agent",
+          "action_params": {
+            "customer_id": "",
+            "request_text": ""
+          },
+          "transitions": [
+            {
+              "to": "HANDLE_ACCOUNT_QUERY",
+              "condition": "request relates to account information or balance"
+            },
+            {
+              "to": "HANDLE_SERVICE_CHANGE",
+              "condition": "request is a service modification or upgrade"
+            },
+            {
+              "to": "HANDLE_COMPLAINT",
+              "condition": "request contains a complaint or dissatisfaction"
+            },
+            {
+              "to": "REQUEST_ESCALATED",
+              "condition": "request cannot be classified or contains sensitive content"
+            }
+          ]
+        },
+        "action": "call_classifier_agent",
+        "action_result": {
+          "agent": "classifier",
+          "classification": "complaint",
+          "confidence": 0.94,
+          "rationale": "Request text maps to complaint based on category cues.",
+          "ambiguous_signal": false,
+          "recommended_next_state": "HANDLE_COMPLAINT"
+        },
+        "next_state": "HANDLE_COMPLAINT",
+        "reasoning": "The workflow is currently in CLASSIFY_REQUEST and the visible state specification permits a transition to HANDLE_COMPLAINT. The simulated classifier agent returned structured evidence indicating this outcome, so selecting HANDLE_COMPLAINT follows the observed action result and the transition conditions for customer COMP-001.",
+        "update_result": {
+          "status": "ok",
+          "current_state_id": "HANDLE_COMPLAINT",
+          "from_state": "CLASSIFY_REQUEST",
+          "to_state": "HANDLE_COMPLAINT",
+          "reasoning": "The workflow is currently in CLASSIFY_REQUEST and the visible state specification permits a transition to HANDLE_COMPLAINT. The simulated classifier agent returned structured evidence indicating this outcome, so selecting HANDLE_COMPLAINT follows the observed action result and the transition conditions for customer COMP-001.",
+          "reasoning_word_count": 41
+        },
+        "tokens": 157,
+        "baseline_tokens": 353
+      },
+      {
+        "state": "HANDLE_COMPLAINT",
+        "state_spec_visible_to_agent": {
+          "state_id": "HANDLE_COMPLAINT",
+          "action": "call_complaint_agent",
+          "action_params": {
+            "customer_id": "",
+            "complaint_text": ""
+          },
+          "transitions": [
+            {
+              "to": "REQUEST_COMPLETE",
+              "condition": "resolution offered and customer accepted"
+            },
+            {
+              "to": "REQUEST_ESCALATED",
+              "condition": "customer not satisfied or issue requires escalation"
+            }
+          ]
+        },
+        "action": "call_complaint_agent",
+        "action_result": {
+          "agent": "complaint",
+          "sentiment": "recoverable",
+          "resolution_offered": true,
+          "customer_accepted": true,
+          "escalation_reason": "",
+          "recommended_next_state": "REQUEST_COMPLETE"
+        },
+        "next_state": "REQUEST_COMPLETE",
+        "reasoning": "The workflow is currently in HANDLE_COMPLAINT and the visible state specification permits a transition to REQUEST_COMPLETE. The simulated complaint agent returned structured evidence indicating this outcome, so selecting REQUEST_COMPLETE follows the observed action result and the transition conditions for customer COMP-001.",
+        "update_result": {
+          "status": "ok",
+          "current_state_id": "REQUEST_COMPLETE",
+          "from_state": "HANDLE_COMPLAINT",
+          "to_state": "REQUEST_COMPLETE",
+          "reasoning": "The workflow is currently in HANDLE_COMPLAINT and the visible state specification permits a transition to REQUEST_COMPLETE. The simulated complaint agent returned structured evidence indicating this outcome, so selecting REQUEST_COMPLETE follows the observed action result and the transition conditions for customer COMP-001.",
+          "reasoning_word_count": 41
+        },
+        "tokens": 117,
+        "baseline_tokens": 342
+      }
+    ],
+    "reasoning_scores": [
+      5,
+      5
+    ]
+  }
+}
