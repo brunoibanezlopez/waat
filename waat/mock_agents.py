@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .synthetic_data import expected_path_for_case
+
 
 _CLASSIFIER_OVERRIDES = {
     # Realistic failure modes: complaint language causes premature complaint routing,
@@ -95,16 +97,36 @@ def call_complaint_agent(case: dict[str, Any], state_id: str) -> dict[str, Any]:
     }
 
 
-def execute_action(action: str, case: dict[str, Any], state_id: str) -> dict[str, Any]:
+def execute_action(
+    action: str,
+    case: dict[str, Any],
+    state_id: str,
+    state_spec: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     dispatch = {
         "call_classifier_agent": call_classifier_agent,
         "call_account_agent": call_account_agent,
         "call_service_agent": call_service_agent,
         "call_complaint_agent": call_complaint_agent,
     }
-    if action not in dispatch:
-        raise KeyError(f"Unknown mock action: {action}")
-    return dispatch[action](case, state_id)
+    if action in dispatch:
+        return dispatch[action](case, state_id)
+    return call_domain_workflow_agent(case, state_id, state_spec or {})
+
+
+def call_domain_workflow_agent(case: dict[str, Any], state_id: str, state_spec: dict[str, Any]) -> dict[str, Any]:
+    """Domain-shaped mock utility agent for generated telecom workflows."""
+    allowed_targets = [transition["to"] for transition in state_spec.get("transitions", [])]
+    next_state = _next_policy_state(case, state_id, allowed_targets)
+    return {
+        "agent": "domain_workflow",
+        "state_id": state_id,
+        "case_category": case.get("metadata", {}).get("category"),
+        "case_type": _case_type(case),
+        "allowed_targets": allowed_targets,
+        "recommended_next_state": next_state,
+        "rationale": f"{state_id} completed using case metadata and operational policy; next step is {next_state}.",
+    }
 
 
 def _state_for_category(category: str) -> str:
@@ -114,3 +136,21 @@ def _state_for_category(category: str) -> str:
         "complaint": "HANDLE_COMPLAINT",
         "edge": "REQUEST_ESCALATED",
     }.get(category, "REQUEST_ESCALATED")
+
+
+def _next_policy_state(case: dict[str, Any], state_id: str, allowed_targets: list[str]) -> str:
+    for workflow_nodes in (100, 50, 20, 6):
+        path = expected_path_for_case(case, workflow_nodes) if workflow_nodes != 6 else case["expected_path"]
+        if state_id in path:
+            index = path.index(state_id)
+            if index + 1 < len(path) and path[index + 1] in allowed_targets:
+                return path[index + 1]
+    return allowed_targets[0] if allowed_targets else "REQUEST_ESCALATED"
+
+
+def _case_type(case: dict[str, Any]) -> str:
+    metadata = case.get("metadata", {})
+    for key in ("query_type", "change_type", "complaint_type", "edge_type"):
+        if key in metadata:
+            return str(metadata[key])
+    return "unknown"

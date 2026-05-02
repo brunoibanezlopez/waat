@@ -1,3 +1,4 @@
-strands-agents>=1.37.0
-anthropic>=0.72.0
 PyYAML>=6.0.0
+boto3>=1.34.0
+matplotlib>=3.8.0
+networkx>=3.2.0

@@ -1,20 +1,20 @@
-# Workflow as a Tool (WaaT) Strands Prototype
+# Workflow as a Tool (WaaT) Claude Sonnet Evaluation
 
-This folder contains a shareable Strands-based research prototype for the paper
-**Workflow as a Tool (WaaT)**. It demonstrates how workflow state can be exposed
-as executable tools instead of being embedded entirely in a prompt.
+This folder contains the evaluation prototype for the paper **Workflow as a Tool
+(WaaT)**. It demonstrates how workflow state can be exposed as executable tools
+instead of being embedded entirely in a prompt.
 
-![Workflow Diagram](workflow_diagram.png)
+![Workflow Diagram](figures/workflow_diagram.png)
 
 ## What This Prototype Shows
 
-- `check_workflow` and `update_workflow` are implemented as Strands `@tool`
-  functions.
-- A Strands `Agent` is constructed with the WaaT tools attached, matching the
-  production integration style.
-- The offline evaluation calls the Strands-decorated tools directly so results
-  are deterministic and reproducible without live model variance.
-- A pure workflow-as-prompt baseline is included for comparison.
+- `check_workflow` and `update_workflow` enforce step-scoped workflow access and
+  valid state transitions.
+- Claude Sonnet on Amazon Bedrock selects WaaT transitions from the visible
+  state specification and mock utility-agent output.
+- A Claude Sonnet workflow-as-prompt baseline receives the full YAML workflow and
+  predicts the complete path without WaaT tools.
+- Claude Sonnet scores the transition reasoning quality.
 - The benchmark includes adversarial synthetic cases so results are not
   oracle-perfect.
 
@@ -26,8 +26,8 @@ Install dependencies from this folder:
 python -m pip install -r requirements.txt
 ```
 
-The core dependency is `strands-agents`. Anthropic support is included for
-experimentation, but the default evaluation does not require API credentials.
+The evaluation uses Amazon Bedrock through `boto3`. It expects AWS credentials
+with `bedrock:InvokeModel` access to the configured inference profile.
 
 ## Run
 
@@ -35,39 +35,53 @@ experimentation, but the default evaluation does not require API credentials.
 python run_evaluation.py
 ```
 
-The default evaluation uses deterministic mock utility agents and deterministic
-reasoning scoring so the paper artifacts are reproducible without API
-credentials. `WaaTSuperAgent` and `ReasoningEvaluator` also include Anthropic SDK
-integration points for `claude-sonnet-4-20250514` and exponential backoff.
+The runner loads simple AWS credentials from either `../.env` or `.env` before
+creating the Bedrock client. The default model ID is the Vocus application
+inference profile:
+
+```bash
+arn:aws:bedrock:ap-southeast-2:041538338020:application-inference-profile/umjk7k37bjmb
+```
+
+Override it with `--model-id` or `BEDROCK_MODEL_ID` if needed. Use `--limit N`
+for a smoke test.
+
+To run the full scaling experiment across 6, 20, 50, and 100-node workflow
+variants:
+
+```bash
+python run_scaling_evaluation.py
+```
+
+If your corporate network intercepts TLS, configure the corporate root CA as a
+PEM bundle with either `AWS_CA_BUNDLE` or `--ca-bundle`. For a short local smoke
+test only, you can pass `--no-verify-ssl`, but do not use that for paper
+results.
 
 ## Outputs
 
-- `results_table.csv`: one row per synthetic test case.
-- `summary_stats.json`: aggregate WaaT and prompt-baseline metrics.
-- `sample_traces.json`: representative account, service, and complaint traces.
-- `results_table_latex.tex`: IEEE-style LaTeX aggregate table.
-- `results_section.tex`: results section for the paper.
-- `claude_update_section.tex`: consolidated LaTeX section to give to Claude.
-
-Current aggregate results:
-
-- WaaT transition accuracy: `85.00%`
-- Prompt baseline transition accuracy: `80.00%`
-- WaaT path accuracy: `83.33%`
-- Prompt baseline path accuracy: `73.33%`
-- WaaT terminal accuracy: `93.33%`
-- Prompt baseline terminal accuracy: `80.00%`
-- Step-level token reduction versus full-workflow prompting: `58.71%`
+- `results/runs/aws_results_table.csv`: one row per synthetic test case for a single workflow run.
+- `results/runs/aws_summary_stats.json`: aggregate metrics for a single workflow run.
+- `results/runs/aws_sample_traces.json`: representative account, service, and complaint traces.
+- `results/runs/aws_results_table_latex.tex`: LaTeX table for a single workflow run.
+- `results/runs/aws_<nodes>_results_table.csv`: per-size result tables for scaling runs.
+- `results/runs/aws_<nodes>_summary_stats.json`: per-size aggregate metrics.
+- `results/runs/aws_<nodes>_sample_traces.json`: representative traces per workflow size.
+- `results/runs/aws_<nodes>_results_table_latex.tex`: LaTeX tables per workflow size.
+- `results/scaling/scaling_summary.csv` and `results/scaling/scaling_summary.json`: consolidated scaling metrics.
+- `figures/scaling_metrics.png`: token and accuracy scaling plot.
+- `figures/workflow_graph_<nodes>_nodes.png`: rendered workflow graph per size.
 
 ## Structure
 
 - `waat/workflow.py`: YAML loader and state graph.
-- `waat/tools.py`: Strands `@tool` implementations of `check_workflow` and `update_workflow`.
-- `waat/agent.py`: Strands super-agent construction plus reproducible evaluation loop.
-- `waat/baseline.py`: pure workflow-as-prompt baseline without WaaT tools.
+- `waat/tools.py`: implementations of `check_workflow` and `update_workflow`.
+- `waat/agent.py`: WaaT evaluation loop using Claude Sonnet on Bedrock.
+- `waat/baseline.py`: Claude Sonnet workflow-as-prompt baseline without WaaT tools.
 - `waat/mock_agents.py`: deterministic mock utility agents.
-- `waat/evaluator.py`: reasoning-quality scorer.
+- `waat/evaluator.py`: Claude Sonnet reasoning-quality scorer.
 - `waat/synthetic_data.py`: 30 synthetic customer requests.
+- `waat/workflow_variants.py`: generated 6, 20, 50, and 100-node workflow variants.
 - `waat/workflows/service_request.yaml`: workflow definition used by the evaluation.
 
 ## Production Context

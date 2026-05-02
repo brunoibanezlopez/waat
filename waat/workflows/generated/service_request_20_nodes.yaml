@@ -1,0 +1,219 @@
+workflow: SERVICE_REQUEST_20_NODES
+initial_state: CLASSIFY_REQUEST
+terminal_states:
+- REQUEST_COMPLETE
+- REQUEST_ESCALATED
+states:
+  CLASSIFY_REQUEST:
+    action: call_intake_classifier_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: VERIFY_CUSTOMER_IDENTITY
+      condition: request maps to account, billing, service, complaint, or field-support
+        handling
+    - to: REVIEW_SECURITY_OR_PRIVACY_RISK
+      condition: request contains sensitive data, account takeover risk, or policy-bypass
+        language
+    - to: REQUEST_ESCALATED
+      condition: request cannot be classified with sufficient confidence
+  VERIFY_CUSTOMER_IDENTITY:
+    action: call_identity_verification_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: RETRIEVE_CUSTOMER_PROFILE
+      condition: customer identity is verified or low-risk assisted service is allowed
+    - to: REVIEW_SECURITY_OR_PRIVACY_RISK
+      condition: identity verification fails or request involves another customer's
+        data
+  RETRIEVE_CUSTOMER_PROFILE:
+    action: call_customer_profile_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_ACCOUNT_STATUS
+      condition: request is about account information, payment status, ownership,
+        or billing
+    - to: CHECK_CONTRACT_TERMS
+      condition: request is a service modification, upgrade, relocation, or contract
+        exception
+    - to: CAPTURE_COMPLAINT_DETAILS
+      condition: request is primarily a complaint or dissatisfaction event
+    - to: REQUEST_ESCALATED
+      condition: profile is unavailable or does not match the requesting party
+  REVIEW_SECURITY_OR_PRIVACY_RISK:
+    action: call_compliance_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_ESCALATED
+      condition: privacy, security, or policy risk requires manual handling
+    - to: VERIFY_CUSTOMER_IDENTITY
+      condition: risk is cleared and the request may continue through normal identity
+        checks
+  CHECK_ACCOUNT_STATUS:
+    action: call_account_status_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: HANDLE_ACCOUNT_QUERY
+      condition: account is active and the requested data is available
+    - to: ASSESS_BILLING_DISPUTE
+      condition: account request contains payment or balance-dispute indicators
+    - to: CREATE_SUPPORT_TICKET
+      condition: account data is unavailable, inconsistent, or requires back-office
+        recovery
+  HANDLE_ACCOUNT_QUERY:
+    action: call_account_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: query answered and customer is satisfied
+    - to: ASSESS_BILLING_DISPUTE
+      condition: answer reveals a payment, charge, or statement dispute
+    - to: CREATE_SUPPORT_TICKET
+      condition: account data cannot be retrieved automatically
+  ASSESS_BILLING_DISPUTE:
+    action: call_billing_dispute_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: HANDLE_COMPLAINT
+      condition: billing dispute can be addressed through complaint-resolution handling
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: refund, credit, or adjustment exceeds automated authority
+    - to: CREATE_SUPPORT_TICKET
+      condition: billing records are incomplete or require back-office investigation
+  CHECK_CONTRACT_TERMS:
+    action: call_contract_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: HANDLE_SERVICE_CHANGE
+      condition: requested change is permitted under the active contract
+    - to: SCHEDULE_TECHNICIAN
+      condition: relocation or installation request requires field scheduling
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: change exceeds contract limits or requires commercial approval
+    - to: CREATE_SUPPORT_TICKET
+      condition: contract data is missing or inconsistent
+  HANDLE_SERVICE_CHANGE:
+    action: call_service_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: service change completed successfully
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: change requires manual approval or custom design
+    - to: CREATE_SUPPORT_TICKET
+      condition: service platform cannot complete the change automatically
+  REQUEST_MANUAL_APPROVAL:
+    action: call_approval_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_ESCALATED
+      condition: manual approval is required before the customer request can proceed
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: approval is granted and customer-facing confirmation can be sent
+  CAPTURE_COMPLAINT_DETAILS:
+    action: call_complaint_intake_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_SERVICE_OUTAGE
+      condition: complaint concerns service quality, outage, speed, installation,
+        or technician attendance
+    - to: HANDLE_COMPLAINT
+      condition: complaint can proceed directly to resolution handling
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: complaint indicates regulatory, executive, or unresolved escalation
+        risk
+  HANDLE_COMPLAINT:
+    action: call_complaint_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: resolution offered and accepted
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: customer remains dissatisfied or issue requires specialist escalation
+    - to: CREATE_SUPPORT_TICKET
+      condition: resolution requires follow-up work by another team
+  CHECK_SERVICE_OUTAGE:
+    action: call_outage_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SCHEDULE_TECHNICIAN
+      condition: field visit or installation remediation is required
+    - to: HANDLE_COMPLAINT
+      condition: service issue can be resolved or compensated without field dispatch
+    - to: CREATE_SUPPORT_TICKET
+      condition: network investigation is required before resolution
+  SCHEDULE_TECHNICIAN:
+    action: call_field_service_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CREATE_SUPPORT_TICKET
+      condition: technician appointment is scheduled and must be tracked
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: field dispatch requires approval or specialist coordination
+  CREATE_SUPPORT_TICKET:
+    action: call_ticketing_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_ESCALATED
+      condition: ticket requires manual queue ownership or specialist follow-up
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: ticket created and customer can be notified of next steps
+  SEND_CUSTOMER_CONFIRMATION:
+    action: call_notification_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: LOG_INTERACTION
+      condition: customer confirmation has been sent successfully
+    - to: CREATE_SUPPORT_TICKET
+      condition: confirmation failed and follow-up tracking is required
+  LOG_INTERACTION:
+    action: call_audit_log_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CLOSE_REQUEST
+      condition: interaction notes, decision rationale, and outcome are recorded
+    - to: CREATE_SUPPORT_TICKET
+      condition: audit log cannot be completed automatically
+  CLOSE_REQUEST:
+    action: call_closure_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_COMPLETE
+      condition: all required customer-facing and audit steps are complete
+    - to: REQUEST_ESCALATED
+      condition: closure check identifies unresolved operational risk

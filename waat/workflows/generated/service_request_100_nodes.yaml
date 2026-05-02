@@ -1,0 +1,1082 @@
+workflow: SERVICE_REQUEST_100_NODES
+initial_state: CLASSIFY_REQUEST
+terminal_states:
+- REQUEST_COMPLETE
+- REQUEST_ESCALATED
+states:
+  CLASSIFY_REQUEST:
+    action: call_intake_classifier_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: VERIFY_CUSTOMER_IDENTITY
+      condition: request maps to account, billing, service, complaint, or field-support
+        handling
+    - to: REVIEW_SECURITY_OR_PRIVACY_RISK
+      condition: request contains sensitive data, account takeover risk, or policy-bypass
+        language
+    - to: REQUEST_ESCALATED
+      condition: request cannot be classified with sufficient confidence
+  VERIFY_CUSTOMER_IDENTITY:
+    action: call_identity_verification_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_FRAUD_SIGNALS
+      condition: identity verification includes fraud-signal screening
+    - to: RETRIEVE_CUSTOMER_PROFILE
+      condition: customer identity is verified or low-risk assisted service is allowed
+    - to: REVIEW_SECURITY_OR_PRIVACY_RISK
+      condition: identity verification fails or request involves another customer's
+        data
+  RETRIEVE_CUSTOMER_PROFILE:
+    action: call_customer_profile_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_ACCOUNT_STATUS
+      condition: request is about account information, payment status, ownership,
+        or billing
+    - to: CHECK_CONTRACT_TERMS
+      condition: request is a service modification, upgrade, relocation, or contract
+        exception
+    - to: CAPTURE_COMPLAINT_DETAILS
+      condition: request is primarily a complaint or dissatisfaction event
+    - to: REQUEST_ESCALATED
+      condition: profile is unavailable or does not match the requesting party
+  REVIEW_SECURITY_OR_PRIVACY_RISK:
+    action: call_compliance_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_ESCALATED
+      condition: privacy, security, or policy risk requires manual handling
+    - to: VERIFY_CUSTOMER_IDENTITY
+      condition: risk is cleared and the request may continue through normal identity
+        checks
+  CHECK_ACCOUNT_STATUS:
+    action: call_account_status_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: VALIDATE_DIRECT_DEBIT_STATUS
+      condition: payment-method requests require direct-debit validation
+    - to: RETRIEVE_BILLING_PROFILE
+      condition: billing profile should be retrieved before answering account or payment
+        questions
+    - to: HANDLE_ACCOUNT_QUERY
+      condition: account is active and the requested data is available
+    - to: ASSESS_BILLING_DISPUTE
+      condition: account request contains payment or balance-dispute indicators
+    - to: CREATE_SUPPORT_TICKET
+      condition: account data is unavailable, inconsistent, or requires back-office
+        recovery
+  HANDLE_ACCOUNT_QUERY:
+    action: call_account_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: VALIDATE_ACCOUNT_CONTACTS
+      condition: account response requires contact-data validation
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: query answered and customer is satisfied
+    - to: ASSESS_BILLING_DISPUTE
+      condition: answer reveals a payment, charge, or statement dispute
+    - to: CREATE_SUPPORT_TICKET
+      condition: account data cannot be retrieved automatically
+  ASSESS_BILLING_DISPUTE:
+    action: call_billing_dispute_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REVIEW_BILLING_ADJUSTMENT
+      condition: billing dispute requires adjustment or goodwill review
+    - to: HANDLE_COMPLAINT
+      condition: billing dispute can be addressed through complaint-resolution handling
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: refund, credit, or adjustment exceeds automated authority
+    - to: CREATE_SUPPORT_TICKET
+      condition: billing records are incomplete or require back-office investigation
+  CHECK_CONTRACT_TERMS:
+    action: call_contract_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_CONTRACT_END_DATE
+      condition: contract end date affects change eligibility
+    - to: DESIGN_CUSTOM_NETWORK_OPTION
+      condition: custom network design requests require solution design
+    - to: CHECK_SITE_SERVICEABILITY
+      condition: relocation requests require site serviceability checks
+    - to: VERIFY_SERVICE_INVENTORY
+      condition: service inventory must be verified before change eligibility
+    - to: HANDLE_SERVICE_CHANGE
+      condition: requested change is permitted under the active contract
+    - to: SCHEDULE_TECHNICIAN
+      condition: relocation or installation request requires field scheduling
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: change exceeds contract limits or requires commercial approval
+    - to: CREATE_SUPPORT_TICKET
+      condition: contract data is missing or inconsistent
+  HANDLE_SERVICE_CHANGE:
+    action: call_service_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CONFIGURE_SERVICE_ORDER
+      condition: eligible service change requires an order configuration step
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: service change completed successfully
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: change requires manual approval or custom design
+    - to: CREATE_SUPPORT_TICKET
+      condition: service platform cannot complete the change automatically
+  REQUEST_MANUAL_APPROVAL:
+    action: call_approval_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_ESCALATED
+      condition: manual approval is required before the customer request can proceed
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: approval is granted and customer-facing confirmation can be sent
+  CAPTURE_COMPLAINT_DETAILS:
+    action: call_complaint_intake_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REVIEW_REGULATORY_RISK
+      condition: regulatory or unresolved complaints require risk review
+    - to: CHECK_SERVICE_HEALTH
+      condition: service-related complaint requires health diagnostics
+    - to: CHECK_SERVICE_OUTAGE
+      condition: complaint concerns service quality, outage, speed, installation,
+        or technician attendance
+    - to: HANDLE_COMPLAINT
+      condition: complaint can proceed directly to resolution handling
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: complaint indicates regulatory, executive, or unresolved escalation
+        risk
+  HANDLE_COMPLAINT:
+    action: call_complaint_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: resolution offered and accepted
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: customer remains dissatisfied or issue requires specialist escalation
+    - to: CREATE_SUPPORT_TICKET
+      condition: resolution requires follow-up work by another team
+  CHECK_SERVICE_OUTAGE:
+    action: call_outage_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: RUN_LINE_TEST
+      condition: service outage or speed complaint requires a line test
+    - to: SCHEDULE_TECHNICIAN
+      condition: field visit or installation remediation is required
+    - to: HANDLE_COMPLAINT
+      condition: service issue can be resolved or compensated without field dispatch
+    - to: CREATE_SUPPORT_TICKET
+      condition: network investigation is required before resolution
+  SCHEDULE_TECHNICIAN:
+    action: call_field_service_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_FIELD_RESOURCE_AVAILABILITY
+      condition: technician scheduling requires field-resource availability
+    - to: CREATE_SUPPORT_TICKET
+      condition: technician appointment is scheduled and must be tracked
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: field dispatch requires approval or specialist coordination
+  CREATE_SUPPORT_TICKET:
+    action: call_ticketing_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_ESCALATED
+      condition: ticket requires manual queue ownership or specialist follow-up
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: ticket created and customer can be notified of next steps
+  SEND_CUSTOMER_CONFIRMATION:
+    action: call_notification_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: VALIDATE_COMMUNICATION_CHANNEL
+      condition: customer confirmation requires channel validation
+    - to: PREPARE_CUSTOMER_SUMMARY
+      condition: customer communication should include a structured case summary
+    - to: LOG_INTERACTION
+      condition: customer confirmation has been sent successfully
+    - to: CREATE_SUPPORT_TICKET
+      condition: confirmation failed and follow-up tracking is required
+  LOG_INTERACTION:
+    action: call_audit_log_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: ARCHIVE_WORKFLOW_RECORD
+      condition: logged interactions must be archived
+    - to: RECONCILE_CASE_NOTES
+      condition: interaction logging requires case-note reconciliation
+    - to: CLOSE_REQUEST
+      condition: interaction notes, decision rationale, and outcome are recorded
+    - to: CREATE_SUPPORT_TICKET
+      condition: audit log cannot be completed automatically
+  CLOSE_REQUEST:
+    action: call_closure_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: FINAL_GOVERNANCE_CHECK
+      condition: closure requires final governance check
+    - to: REQUEST_COMPLETE
+      condition: all required customer-facing and audit steps are complete
+    - to: REQUEST_ESCALATED
+      condition: closure check identifies unresolved operational risk
+  VALIDATE_ACCOUNT_CONTACTS:
+    action: call_contact_validation_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: validated contact records allow customer confirmation
+    - to: CREATE_SUPPORT_TICKET
+      condition: contact records require correction
+  RETRIEVE_BILLING_PROFILE:
+    action: call_billing_profile_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: RECOVER_MISSING_ACCOUNT_DATA
+      condition: missing account data requires recovery before a response can be given
+    - to: HANDLE_ACCOUNT_QUERY
+      condition: billing profile supports a standard account answer
+    - to: VALIDATE_PAYMENT_HISTORY
+      condition: payment history or charges must be checked
+  VALIDATE_PAYMENT_HISTORY:
+    action: call_payment_history_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: VERIFY_INVOICE_LINE_ITEMS
+      condition: invoice line items must be verified for payment disputes
+    - to: ASSESS_BILLING_DISPUTE
+      condition: payment history confirms a dispute or mismatch
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: payment history resolves the question
+  REVIEW_BILLING_ADJUSTMENT:
+    action: call_credit_assessment_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: VALIDATE_CREDIT_POLICY
+      condition: billing adjustment must satisfy credit policy
+    - to: HANDLE_COMPLAINT
+      condition: approved adjustment can be offered as complaint resolution
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: credit or refund exceeds automated threshold
+  VERIFY_ACCOUNT_OWNERSHIP:
+    action: call_ownership_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: HANDLE_ACCOUNT_QUERY
+      condition: ownership is verified
+    - to: CREATE_SUPPORT_TICKET
+      condition: ownership records require back-office review
+  RECOVER_MISSING_ACCOUNT_DATA:
+    action: call_data_recovery_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CREATE_SUPPORT_TICKET
+      condition: data recovery requires manual queue handling
+    - to: HANDLE_ACCOUNT_QUERY
+      condition: missing data is recovered
+  VERIFY_SERVICE_INVENTORY:
+    action: call_inventory_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: ASSESS_NETWORK_CAPACITY
+      condition: network capacity affects service modification feasibility
+    - to: ASSESS_CHANGE_ELIGIBILITY
+      condition: service inventory supports the requested change
+    - to: CREATE_SUPPORT_TICKET
+      condition: inventory is missing or inconsistent
+  ASSESS_CHANGE_ELIGIBILITY:
+    action: call_change_eligibility_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: HANDLE_SERVICE_CHANGE
+      condition: change is eligible for automated fulfilment
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: change requires commercial or technical approval
+  CHECK_SITE_SERVICEABILITY:
+    action: call_serviceability_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_INSTALLATION_WINDOW
+      condition: relocation requires installation-window assessment
+    - to: SCHEDULE_TECHNICIAN
+      condition: site visit or installation appointment is required
+    - to: HANDLE_SERVICE_CHANGE
+      condition: site is serviceable without field work
+  DESIGN_CUSTOM_NETWORK_OPTION:
+    action: call_solution_design_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: custom design must be reviewed by engineering
+    - to: CREATE_SUPPORT_TICKET
+      condition: design work item is created for solutioning
+  CONFIGURE_SERVICE_ORDER:
+    action: call_order_config_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SUBMIT_SERVICE_ORDER
+      condition: order configuration is valid
+    - to: CREATE_SUPPORT_TICKET
+      condition: order configuration failed validation
+  SUBMIT_SERVICE_ORDER:
+    action: call_order_submission_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: service order is submitted
+    - to: CREATE_SUPPORT_TICKET
+      condition: order submission failed and requires follow-up
+  CHECK_SERVICE_HEALTH:
+    action: call_service_health_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_OUTAGE_REGION
+      condition: service health checks include regional outage review
+    - to: CHECK_SERVICE_OUTAGE
+      condition: service health review requires outage correlation
+    - to: RUN_LINE_TEST
+      condition: service-health signals require technical diagnostics
+    - to: HANDLE_COMPLAINT
+      condition: health check supports complaint resolution
+  RUN_LINE_TEST:
+    action: call_line_test_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: RUN_MODEM_DIAGNOSTICS
+      condition: line tests are followed by modem diagnostics when needed
+    - to: SCHEDULE_TECHNICIAN
+      condition: line test indicates premises or field fault
+    - to: HANDLE_COMPLAINT
+      condition: line test does not require dispatch
+  CHECK_APPOINTMENT_HISTORY:
+    action: call_appointment_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SCHEDULE_TECHNICIAN
+      condition: new or replacement appointment is required
+    - to: HANDLE_COMPLAINT
+      condition: appointment issue can be compensated without dispatch
+  ASSESS_SERVICE_CREDIT:
+    action: call_service_credit_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: HANDLE_COMPLAINT
+      condition: service credit can resolve the complaint
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: credit requires approval
+  REVIEW_REGULATORY_RISK:
+    action: call_regulatory_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_REGULATORY_DEADLINE
+      condition: regulatory risk requires deadline assessment
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: formal complaint or regulatory language requires escalation
+    - to: HANDLE_COMPLAINT
+      condition: risk is low enough for standard complaint handling
+  CHECK_RETENTION_ELIGIBILITY:
+    action: call_retention_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_CUSTOMER_TENURE
+      condition: retention eligibility considers customer tenure
+    - to: ASSESS_RETENTION_OFFER
+      condition: customer is eligible for save or goodwill offer
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: retention exception requires approval
+  ASSESS_RETENTION_OFFER:
+    action: call_offer_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: offer is accepted and can be confirmed
+    - to: HANDLE_COMPLAINT
+      condition: offer is rejected and complaint handling continues
+  OPEN_CASE_RECORD:
+    action: call_case_record_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CREATE_SUPPORT_TICKET
+      condition: case record requires queue ownership
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: case record is complete and customer can be notified
+  ASSIGN_SPECIALIST_QUEUE:
+    action: call_queue_assignment_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_ESCALATED
+      condition: specialist queue accepts ownership
+    - to: CREATE_SUPPORT_TICKET
+      condition: queue assignment requires ticket tracking
+  NOTIFY_BACK_OFFICE:
+    action: call_back_office_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CREATE_SUPPORT_TICKET
+      condition: back-office team must act asynchronously
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: back-office notification is recorded
+  CHECK_KNOWLEDGE_BASE:
+    action: call_knowledge_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: HANDLE_ACCOUNT_QUERY
+      condition: knowledge article answers the request
+    - to: CREATE_SUPPORT_TICKET
+      condition: knowledge article does not cover the case
+  VALIDATE_CUSTOMER_CONSENT:
+    action: call_consent_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: customer consent is present for the action
+    - to: REVIEW_SECURITY_OR_PRIVACY_RISK
+      condition: consent is missing or invalid
+  REVIEW_VULNERABLE_CUSTOMER_FLAG:
+    action: call_vulnerability_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: vulnerability marker requires assisted handling
+    - to: VERIFY_CUSTOMER_IDENTITY
+      condition: normal process may continue
+  CHECK_FRAUD_SIGNALS:
+    action: call_fraud_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: RETRIEVE_CUSTOMER_PROFILE
+      condition: fraud checks are clear
+    - to: REVIEW_SECURITY_OR_PRIVACY_RISK
+      condition: fraud indicators are present
+  PREPARE_CUSTOMER_SUMMARY:
+    action: call_summary_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: LOG_INTERACTION
+      condition: summary is prepared and should be logged
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: summary requires customer-facing confirmation
+  RECONCILE_CASE_NOTES:
+    action: call_case_notes_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CLOSE_REQUEST
+      condition: case notes are reconciled and the request can be closed
+    - to: CREATE_SUPPORT_TICKET
+      condition: case notes require manual correction
+  QUALITY_REVIEW_SAMPLE:
+    action: call_quality_review_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CLOSE_REQUEST
+      condition: case passes quality review
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: quality review requires supervisor action
+  SURVEY_CUSTOMER_SATISFACTION:
+    action: call_survey_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CLOSE_REQUEST
+      condition: survey invitation is sent
+    - to: LOG_INTERACTION
+      condition: survey cannot be sent but outcome is logged
+  CHECK_CUSTOMER_TENURE:
+    action: call_tenure_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: tenure affects retention and goodwill options
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  REVIEW_PRODUCT_BUNDLE:
+    action: call_bundle_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: product bundle constraints affect service changes
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_DEVICE_COMPATIBILITY:
+    action: call_device_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: device compatibility affects fulfilment
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  VALIDATE_STATIC_IP_POLICY:
+    action: call_static_ip_policy_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: static IP requests require policy validation
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_NUMBER_PORTING_STATUS:
+    action: call_porting_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: voice changes require porting-status review
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_SIP_CAPACITY:
+    action: call_sip_capacity_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: SIP capacity requests require capacity planning
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  ASSESS_NETWORK_CAPACITY:
+    action: call_network_capacity_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: ASSESS_CHANGE_ELIGIBILITY
+      condition: network capacity supports eligibility assessment
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: capacity constraint requires approval
+  CHECK_INSTALLATION_WINDOW:
+    action: call_install_window_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SCHEDULE_TECHNICIAN
+      condition: installation window requires a technician appointment
+    - to: HANDLE_SERVICE_CHANGE
+      condition: installation window allows automated fulfilment
+  VALIDATE_SITE_ACCESS:
+    action: call_site_access_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: technician visits require site-access validation
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_FIELD_RESOURCE_AVAILABILITY:
+    action: call_field_capacity_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CONFIRM_APPOINTMENT_SLOT
+      condition: field resource is available
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: field resource constraint requires coordination
+  CONFIRM_APPOINTMENT_SLOT:
+    action: call_slot_confirmation_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CREATE_DISPATCH_ORDER
+      condition: appointment slot is confirmed
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: appointment slot cannot be confirmed
+  CHECK_EQUIPMENT_SHIPMENT:
+    action: call_equipment_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: equipment shipment may be required
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CREATE_DISPATCH_ORDER:
+    action: call_dispatch_order_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CREATE_SUPPORT_TICKET
+      condition: dispatch order is created and must be tracked
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: dispatch order requires approval
+  CHECK_OUTAGE_REGION:
+    action: call_outage_region_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: RUN_LINE_TEST
+      condition: regional status does not fully explain the service issue
+    - to: HANDLE_COMPLAINT
+      condition: regional outage explains the issue and can be communicated
+  CHECK_MAINTENANCE_WINDOW:
+    action: call_maintenance_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: planned maintenance may explain service impact
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_MAJOR_INCIDENT:
+    action: call_incident_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: major incident status affects escalation
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  RUN_MODEM_DIAGNOSTICS:
+    action: call_modem_diagnostics_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SCHEDULE_TECHNICIAN
+      condition: modem diagnostics indicate a field fault
+    - to: HANDLE_COMPLAINT
+      condition: modem diagnostics support non-field resolution
+  RUN_ACCESS_NETWORK_TEST:
+    action: call_access_test_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: access network testing refines fault handling
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_PREVIOUS_FAULTS:
+    action: call_fault_history_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: repeat-fault history affects escalation
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  ASSESS_CHRONIC_FAULT_RISK:
+    action: call_chronic_fault_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: chronic fault risk affects complaint escalation
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  VERIFY_INVOICE_LINE_ITEMS:
+    action: call_invoice_line_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: ASSESS_BILLING_DISPUTE
+      condition: invoice line items confirm the dispute
+    - to: SEND_CUSTOMER_CONFIRMATION
+      condition: invoice line items resolve the question
+  CHECK_TAX_AND_FEES:
+    action: call_tax_fee_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: tax and fee questions require specialist checks
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  VALIDATE_CREDIT_POLICY:
+    action: call_credit_policy_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: HANDLE_COMPLAINT
+      condition: credit policy permits an offer
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: credit requires approval
+  CALCULATE_GOODWILL_CREDIT:
+    action: call_goodwill_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: goodwill credit may resolve dissatisfaction
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_REFUND_METHOD:
+    action: call_refund_method_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: refund method must be available
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CREATE_BILLING_CASE:
+    action: call_billing_case_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: billing investigation requires a case
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_COLLECTIONS_STATUS:
+    action: call_collections_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: collections state affects payment support
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  VALIDATE_DIRECT_DEBIT_STATUS:
+    action: call_direct_debit_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: RETRIEVE_BILLING_PROFILE
+      condition: direct debit status is validated
+    - to: CREATE_SUPPORT_TICKET
+      condition: direct debit record requires correction
+  CHECK_CONTRACT_END_DATE:
+    action: call_contract_end_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: VERIFY_SERVICE_INVENTORY
+      condition: contract dates allow service-change checks
+    - to: CHECK_SITE_SERVICEABILITY
+      condition: relocation requires site serviceability review
+    - to: DESIGN_CUSTOM_NETWORK_OPTION
+      condition: custom design requires solution design
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: contract dates require commercial approval
+  ASSESS_EARLY_TERMINATION_FEE:
+    action: call_termination_fee_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: termination fees affect cancellation handling
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  EVALUATE_CANCELLATION_ELIGIBILITY:
+    action: call_cancellation_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: cancellation requests require eligibility checks
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  REVIEW_SAVE_OFFER_POLICY:
+    action: call_save_policy_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: save offers must comply with policy
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  GENERATE_RETENTION_OPTIONS:
+    action: call_retention_options_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: retention options are generated for eligible customers
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  RECORD_RETENTION_OUTCOME:
+    action: call_retention_outcome_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: retention outcome must be recorded
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_REGULATORY_DEADLINE:
+    action: call_regulatory_deadline_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: PREPARE_REGULATORY_BRIEF
+      condition: regulatory deadline requires a formal brief
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: deadline risk requires immediate escalation
+  PREPARE_REGULATORY_BRIEF:
+    action: call_regulatory_brief_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: formal complaint brief requires owner approval
+    - to: ASSIGN_COMPLAINT_OWNER
+      condition: complaint owner can be assigned
+  ASSIGN_COMPLAINT_OWNER:
+    action: call_complaint_owner_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: complaint ownership must be assigned
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_EXECUTIVE_ESCALATION:
+    action: call_executive_escalation_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: executive escalation changes handling path
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  REVIEW_LEGAL_HOLD:
+    action: call_legal_hold_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: legal hold affects record handling
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  REDACT_SENSITIVE_NOTES:
+    action: call_redaction_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: sensitive notes must be redacted
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  VALIDATE_COMMUNICATION_CHANNEL:
+    action: call_channel_validation_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: SEND_EMAIL_NOTIFICATION
+      condition: email is the preferred valid channel
+    - to: SEND_SMS_NOTIFICATION
+      condition: SMS is the preferred valid channel
+  SEND_SMS_NOTIFICATION:
+    action: call_sms_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_NOTIFICATION_DELIVERY
+      condition: SMS notification is sent
+    - to: CREATE_SUPPORT_TICKET
+      condition: SMS notification fails
+  SEND_EMAIL_NOTIFICATION:
+    action: call_email_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CHECK_NOTIFICATION_DELIVERY
+      condition: email notification is sent
+    - to: CREATE_SUPPORT_TICKET
+      condition: email notification fails
+  CREATE_CUSTOMER_PORTAL_UPDATE:
+    action: call_portal_update_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: portal update records next steps
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  CHECK_NOTIFICATION_DELIVERY:
+    action: call_delivery_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: LOG_INTERACTION
+      condition: delivery is confirmed and can be logged
+    - to: CREATE_SUPPORT_TICKET
+      condition: delivery failure requires follow-up
+  ARCHIVE_WORKFLOW_RECORD:
+    action: call_archive_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: UPDATE_ANALYTICS_EVENTS
+      condition: workflow record is archived
+    - to: CREATE_SUPPORT_TICKET
+      condition: archive failure requires follow-up
+  UPDATE_ANALYTICS_EVENTS:
+    action: call_analytics_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: CLOSE_REQUEST
+      condition: analytics event is emitted
+    - to: CREATE_SUPPORT_TICKET
+      condition: analytics event failure requires follow-up
+  REVIEW_PROCESS_EXCEPTION:
+    action: call_exception_review_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: process exception requires review
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  REQUEST_SUPERVISOR_SIGNOFF:
+    action: call_supervisor_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_MANUAL_APPROVAL
+      condition: supervisor signoff is required
+    - to: CREATE_SUPPORT_TICKET
+      condition: manual follow-up is required if automated handling cannot complete
+  FINAL_GOVERNANCE_CHECK:
+    action: call_governance_agent
+    action_params:
+      customer_id: ''
+      request_context: ''
+    transitions:
+    - to: REQUEST_COMPLETE
+      condition: final governance checks pass
+    - to: REQUEST_ESCALATED
+      condition: governance check identifies unresolved risk

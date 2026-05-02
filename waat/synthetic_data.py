@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from copy import deepcopy
 
 
 def generate_test_cases() -> list[dict[str, Any]]:
@@ -61,6 +62,161 @@ def generate_test_cases() -> list[dict[str, Any]]:
         cases.append(_case(customer_id, text, terminal, path, {"category": "edge", "edge_type": edge_type}))
 
     return cases
+
+
+def adapt_expected_paths(cases: list[dict[str, Any]], workflow_nodes: int) -> list[dict[str, Any]]:
+    """Return cases with expected paths for the selected workflow size."""
+    adapted = deepcopy(cases)
+    if workflow_nodes == 6:
+        return adapted
+    for case in adapted:
+        case["expected_path"] = expected_path_for_case(case, workflow_nodes)
+        case["expected_terminal_state"] = case["expected_path"][-1]
+    return adapted
+
+
+def expected_path_for_case(case: dict[str, Any], workflow_nodes: int) -> list[str]:
+    """Build a domain-realistic expected path from case metadata and workflow size."""
+    metadata = case["metadata"]
+    category = metadata["category"]
+    edge_type = metadata.get("edge_type")
+
+    if category == "edge":
+        if edge_type in {"sensitive"}:
+            return ["CLASSIFY_REQUEST", "REVIEW_SECURITY_OR_PRIVACY_RISK", "REQUEST_ESCALATED"]
+        return ["CLASSIFY_REQUEST", "REQUEST_ESCALATED"]
+
+    path = ["CLASSIFY_REQUEST", "VERIFY_CUSTOMER_IDENTITY"]
+    if workflow_nodes >= 100:
+        path.append("CHECK_FRAUD_SIGNALS")
+    path.append("RETRIEVE_CUSTOMER_PROFILE")
+
+    if category == "account":
+        path.extend(_account_path(metadata, workflow_nodes))
+    elif category == "service":
+        path.extend(_service_path(metadata, workflow_nodes))
+    elif category == "complaint":
+        path.extend(_complaint_path(metadata, workflow_nodes))
+    else:
+        path.append("REQUEST_ESCALATED")
+    return path
+
+
+def _account_path(metadata: dict[str, Any], workflow_nodes: int) -> list[str]:
+    query_type = metadata.get("query_type")
+    path = ["CHECK_ACCOUNT_STATUS"]
+    if workflow_nodes >= 100 and query_type == "payment_method":
+        path.append("VALIDATE_DIRECT_DEBIT_STATUS")
+    if workflow_nodes >= 50:
+        path.append("RETRIEVE_BILLING_PROFILE")
+    if query_type in {"data_unavailable", "ownership"}:
+        if workflow_nodes >= 50:
+            path.extend(["RECOVER_MISSING_ACCOUNT_DATA", "CREATE_SUPPORT_TICKET"])
+        else:
+            path.append("CREATE_SUPPORT_TICKET")
+        path.append("REQUEST_ESCALATED")
+        return path
+    if query_type in {"payment_status", "balance_dispute"}:
+        if workflow_nodes >= 50:
+            path.append("VALIDATE_PAYMENT_HISTORY")
+        if workflow_nodes >= 100:
+            path.append("VERIFY_INVOICE_LINE_ITEMS")
+        path.append("ASSESS_BILLING_DISPUTE")
+        if workflow_nodes >= 50:
+            path.append("REVIEW_BILLING_ADJUSTMENT")
+        if workflow_nodes >= 100:
+            path.append("VALIDATE_CREDIT_POLICY")
+        path.append("HANDLE_COMPLAINT")
+        path.extend(_closure_path(workflow_nodes))
+        return path
+    path.append("HANDLE_ACCOUNT_QUERY")
+    if workflow_nodes >= 50:
+        path.append("VALIDATE_ACCOUNT_CONTACTS")
+    path.extend(_closure_path(workflow_nodes))
+    return path
+
+
+def _service_path(metadata: dict[str, Any], workflow_nodes: int) -> list[str]:
+    change_type = metadata.get("change_type")
+    path = ["CHECK_CONTRACT_TERMS"]
+    if workflow_nodes >= 100:
+        path.append("CHECK_CONTRACT_END_DATE")
+    if change_type == "relocation":
+        if workflow_nodes >= 50:
+            path.append("CHECK_SITE_SERVICEABILITY")
+        if workflow_nodes >= 100:
+            path.append("CHECK_INSTALLATION_WINDOW")
+        path.append("SCHEDULE_TECHNICIAN")
+        if workflow_nodes >= 100:
+            path.extend(["CHECK_FIELD_RESOURCE_AVAILABILITY", "CONFIRM_APPOINTMENT_SLOT", "CREATE_DISPATCH_ORDER"])
+        path.extend(["CREATE_SUPPORT_TICKET", "REQUEST_ESCALATED"])
+        return path
+    if change_type == "custom_design":
+        if workflow_nodes >= 50:
+            path.append("DESIGN_CUSTOM_NETWORK_OPTION")
+        path.extend(["REQUEST_MANUAL_APPROVAL", "REQUEST_ESCALATED"])
+        return path
+    if change_type == "contract_exception":
+        path.extend(["REQUEST_MANUAL_APPROVAL", "REQUEST_ESCALATED"])
+        return path
+    if workflow_nodes >= 50:
+        path.append("VERIFY_SERVICE_INVENTORY")
+    if workflow_nodes >= 100:
+        path.append("ASSESS_NETWORK_CAPACITY")
+    if workflow_nodes >= 50:
+        path.append("ASSESS_CHANGE_ELIGIBILITY")
+    path.append("HANDLE_SERVICE_CHANGE")
+    if workflow_nodes >= 50:
+        path.extend(["CONFIGURE_SERVICE_ORDER", "SUBMIT_SERVICE_ORDER"])
+    path.extend(_closure_path(workflow_nodes))
+    return path
+
+
+def _complaint_path(metadata: dict[str, Any], workflow_nodes: int) -> list[str]:
+    complaint_type = metadata.get("complaint_type")
+    path = ["CAPTURE_COMPLAINT_DETAILS"]
+    if complaint_type in {"billing_dispute", "regulatory", "unresolved"}:
+        if complaint_type == "regulatory" and workflow_nodes >= 50:
+            path.append("REVIEW_REGULATORY_RISK")
+            if workflow_nodes >= 100:
+                path.extend(["CHECK_REGULATORY_DEADLINE", "PREPARE_REGULATORY_BRIEF"])
+        path.extend(["REQUEST_MANUAL_APPROVAL", "REQUEST_ESCALATED"])
+        return path
+    if complaint_type in {"reliability", "installation", "speed"}:
+        if workflow_nodes >= 50:
+            path.append("CHECK_SERVICE_HEALTH")
+        path.append("CHECK_SERVICE_OUTAGE")
+        if workflow_nodes >= 50:
+            path.append("RUN_LINE_TEST")
+        if workflow_nodes >= 100:
+            path.append("RUN_MODEM_DIAGNOSTICS")
+        if complaint_type == "installation":
+            path.append("SCHEDULE_TECHNICIAN")
+            if workflow_nodes >= 100:
+                path.extend(["CHECK_FIELD_RESOURCE_AVAILABILITY", "CONFIRM_APPOINTMENT_SLOT", "CREATE_DISPATCH_ORDER"])
+            path.extend(["CREATE_SUPPORT_TICKET", "REQUEST_ESCALATED"])
+            return path
+    path.append("HANDLE_COMPLAINT")
+    path.extend(_closure_path(workflow_nodes))
+    return path
+
+
+def _closure_path(workflow_nodes: int) -> list[str]:
+    path = ["SEND_CUSTOMER_CONFIRMATION"]
+    if workflow_nodes >= 100:
+        path.extend(["VALIDATE_COMMUNICATION_CHANNEL", "SEND_EMAIL_NOTIFICATION", "CHECK_NOTIFICATION_DELIVERY"])
+    elif workflow_nodes >= 50:
+        path.append("PREPARE_CUSTOMER_SUMMARY")
+    path.append("LOG_INTERACTION")
+    if workflow_nodes >= 100:
+        path.extend(["ARCHIVE_WORKFLOW_RECORD", "UPDATE_ANALYTICS_EVENTS"])
+    elif workflow_nodes >= 50:
+        path.append("RECONCILE_CASE_NOTES")
+    path.append("CLOSE_REQUEST")
+    if workflow_nodes >= 100:
+        path.append("FINAL_GOVERNANCE_CHECK")
+    path.append("REQUEST_COMPLETE")
+    return path
 
 
 def _case(

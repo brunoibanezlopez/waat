@@ -1,0 +1,52 @@
+workflow: SERVICE_REQUEST_6_NODES
+initial_state: CLASSIFY_REQUEST
+terminal_states:
+- REQUEST_COMPLETE
+- REQUEST_ESCALATED
+states:
+  CLASSIFY_REQUEST:
+    action: call_classifier_agent
+    action_params:
+      customer_id: ''
+      request_text: ''
+    transitions:
+    - to: HANDLE_ACCOUNT_QUERY
+      condition: request relates to account information or balance
+    - to: HANDLE_SERVICE_CHANGE
+      condition: request is a service modification or upgrade
+    - to: HANDLE_COMPLAINT
+      condition: request contains a complaint or dissatisfaction
+    - to: REQUEST_ESCALATED
+      condition: request cannot be classified or contains sensitive content
+  HANDLE_ACCOUNT_QUERY:
+    action: call_account_agent
+    action_params:
+      customer_id: ''
+      query_type: ''
+    transitions:
+    - to: REQUEST_COMPLETE
+      condition: query answered and customer confirmed satisfied
+    - to: HANDLE_COMPLAINT
+      condition: customer dissatisfied with account information provided
+    - to: REQUEST_ESCALATED
+      condition: account data unavailable or agent cannot resolve
+  HANDLE_SERVICE_CHANGE:
+    action: call_service_agent
+    action_params:
+      customer_id: ''
+      change_type: ''
+    transitions:
+    - to: REQUEST_COMPLETE
+      condition: service change completed and customer confirmed
+    - to: REQUEST_ESCALATED
+      condition: change cannot be processed or requires manual approval
+  HANDLE_COMPLAINT:
+    action: call_complaint_agent
+    action_params:
+      customer_id: ''
+      complaint_text: ''
+    transitions:
+    - to: REQUEST_COMPLETE
+      condition: resolution offered and customer accepted
+    - to: REQUEST_ESCALATED
+      condition: customer not satisfied or issue requires escalation

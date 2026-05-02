@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .agent import _estimate_tokens
+from .bedrock_client import BedrockClaudeClient
 from .workflow import Workflow
 
 
@@ -24,21 +23,28 @@ class PromptBaselineResult:
 
 
 class PromptWorkflowBaseline:
-    """Simulates a pure prompt baseline that receives the full workflow YAML.
+    """Pure prompt baseline using Claude on Bedrock with the full workflow YAML."""
 
-    Unlike WaaT, this baseline does not call check_workflow or update_workflow.
-    It receives the whole workflow as prompt context and directly predicts a
-    state path. The deterministic rules model plausible prompt-only failure
-    modes: over-routing dissatisfaction to complaints, under-escalating some
-    manual-approval cases, and over-classifying ambiguous edge requests.
-    """
-
-    def __init__(self, workflow: Workflow, workflow_yaml_path: str | Path) -> None:
+    def __init__(
+        self,
+        workflow: Workflow,
+        workflow_yaml_path: str | Path,
+        bedrock_profile: str | None = None,
+        bedrock_region: str | None = None,
+        bedrock_model_id: str | None = None,
+        bedrock_verify_ssl: bool | str = True,
+    ) -> None:
         self.workflow = workflow
         self.workflow_yaml = Path(workflow_yaml_path).read_text(encoding="utf-8")
+        self.bedrock_client = BedrockClaudeClient(
+            profile_name=bedrock_profile,
+            region_name=bedrock_region,
+            model_id=bedrock_model_id,
+            verify_ssl=bedrock_verify_ssl,
+        )
 
     def run_case(self, case: dict[str, Any]) -> PromptBaselineResult:
-        actual_path = self._predict_path(case)
+        actual_path, tokens = self._predict_path(case)
         expected_path = case["expected_path"]
         terminal_state = actual_path[-1]
         return PromptBaselineResult(
@@ -47,57 +53,28 @@ class PromptWorkflowBaseline:
             transition_accuracy=_transition_accuracy(actual_path, expected_path),
             path_match=actual_path == expected_path,
             terminal_match=terminal_state == case["expected_terminal_state"],
-            tokens=self._estimate_prompt_tokens(case, actual_path),
+            tokens=tokens,
         )
 
-    def _predict_path(self, case: dict[str, Any]) -> list[str]:
-        metadata = case["metadata"]
-        category = metadata["category"]
-
-        if category == "account":
-            query_type = metadata.get("query_type")
-            if query_type in {"payment_status", "balance_dispute"}:
-                return ["CLASSIFY_REQUEST", "HANDLE_COMPLAINT", "REQUEST_COMPLETE"]
-            if query_type == "data_unavailable":
-                return ["CLASSIFY_REQUEST", "HANDLE_ACCOUNT_QUERY", "REQUEST_ESCALATED"]
-            if query_type == "ownership":
-                return ["CLASSIFY_REQUEST", "HANDLE_ACCOUNT_QUERY", "REQUEST_COMPLETE"]
-            return ["CLASSIFY_REQUEST", "HANDLE_ACCOUNT_QUERY", "REQUEST_COMPLETE"]
-
-        if category == "service":
-            change_type = metadata.get("change_type")
-            if change_type == "custom_design":
-                return ["CLASSIFY_REQUEST", "HANDLE_SERVICE_CHANGE", "REQUEST_ESCALATED"]
-            if change_type in {"relocation", "contract_exception"}:
-                return ["CLASSIFY_REQUEST", "HANDLE_SERVICE_CHANGE", "REQUEST_COMPLETE"]
-            return ["CLASSIFY_REQUEST", "HANDLE_SERVICE_CHANGE", "REQUEST_COMPLETE"]
-
-        if category == "complaint":
-            complaint_type = metadata.get("complaint_type")
-            if complaint_type in {"regulatory", "unresolved"}:
-                return ["CLASSIFY_REQUEST", "HANDLE_COMPLAINT", "REQUEST_ESCALATED"]
-            if complaint_type == "billing_dispute":
-                return ["CLASSIFY_REQUEST", "HANDLE_COMPLAINT", "REQUEST_COMPLETE"]
-            return ["CLASSIFY_REQUEST", "HANDLE_COMPLAINT", "REQUEST_COMPLETE"]
-
-        if category == "edge":
-            edge_type = metadata.get("edge_type")
-            if edge_type == "sensitive":
-                return ["CLASSIFY_REQUEST", "REQUEST_ESCALATED"]
-            if edge_type == "ambiguous":
-                return ["CLASSIFY_REQUEST", "HANDLE_SERVICE_CHANGE", "REQUEST_COMPLETE"]
-            return ["CLASSIFY_REQUEST", "REQUEST_ESCALATED"]
-
-        return ["CLASSIFY_REQUEST", "REQUEST_ESCALATED"]
-
-    def _estimate_prompt_tokens(self, case: dict[str, Any], actual_path: list[str]) -> int:
-        prompt = {
-            "system": "You are a workflow controller. Use the full workflow YAML to predict the complete path.",
+    def _predict_path(self, case: dict[str, Any]) -> tuple[list[str], int]:
+        system_prompt = (
+            "You are a workflow controller baseline. You receive the full workflow YAML "
+            "as prompt context and must predict the full state path for the case. "
+            "Return only JSON with key actual_path, whose value is a list of state IDs."
+        )
+        payload = {
             "full_workflow_yaml": self.workflow_yaml,
-            "case": case,
-            "predicted_path": actual_path,
+            "case": {
+                "customer_id": case["customer_id"],
+                "request_text": case["request_text"],
+            },
         }
-        return _estimate_tokens(json.dumps(prompt))
+        parsed, response = self.bedrock_client.converse_json(system_prompt, payload)
+        actual_path = parsed.get("actual_path")
+        if not isinstance(actual_path, list) or not actual_path:
+            raise ValueError(f"Invalid baseline path from Bedrock: {actual_path!r}")
+        cleaned_path = [str(state_id) for state_id in actual_path]
+        return cleaned_path, response.total_tokens
 
 
 def _transition_accuracy(actual_path: list[str], expected_path: list[str]) -> float:
