@@ -74,14 +74,11 @@ def aggregate_results(rows: list[dict[str, Any]], workflow_nodes: int | None = N
         "mean_prompt_baseline_tokens_per_case": round(
             sum(row["prompt_baseline_tokens"] for row in rows) / len(rows), 2
         ),
-        "case_token_reduction_pct": round(
+        "waat_vs_baseline_token_delta_pct": round(
             100
             * (
-                1
-                - (
-                    sum(row["total_tokens"] for row in rows)
-                    / sum(row["prompt_baseline_tokens"] for row in rows)
-                )
+                (sum(row["total_tokens"] for row in rows) / sum(row["prompt_baseline_tokens"] for row in rows))
+                - 1
             ),
             2,
         ),

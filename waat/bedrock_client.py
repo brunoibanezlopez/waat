@@ -67,13 +67,25 @@ class BedrockClaudeClient:
         temperature: float = 0.0,
     ) -> tuple[dict[str, Any], BedrockResponse]:
         """Ask Claude for a JSON object and parse it defensively."""
-        response = self.converse(
-            system_prompt=system_prompt,
-            user_text=json.dumps(payload, indent=2),
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        return _extract_json_object(response.text), response
+        last_error: Exception | None = None
+        prompt = system_prompt
+        for attempt in range(self.max_retries + 1):
+            response = self.converse(
+                system_prompt=prompt,
+                user_text=json.dumps(payload, indent=2),
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            try:
+                return _extract_json_object(response.text), response
+            except (json.JSONDecodeError, ValueError) as exc:
+                last_error = exc
+                prompt = (
+                    f"{system_prompt} Return strict JSON only. Escape all newlines and control characters "
+                    "inside string values. Do not include markdown fences or explanatory text."
+                )
+                time.sleep((2**attempt) + 0.25)
+        raise ValueError("Bedrock response did not contain valid JSON after retries") from last_error
 
     def converse(
         self,

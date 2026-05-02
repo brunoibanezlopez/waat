@@ -25,11 +25,18 @@ class WorkflowSession:
 
     workflow: Workflow
     current_state_id: str | None = None
+    context: dict[str, Any] = field(default_factory=dict)
+    pending_user_request: dict[str, Any] | None = None
     updates: list[dict[str, Any]] = field(default_factory=list)
+    trace: list[dict[str, Any]] = field(default_factory=list)
+    actual_path: list[str] = field(default_factory=list)
+    total_tokens: int = 0
 
     def __post_init__(self) -> None:
         if self.current_state_id is None:
             self.current_state_id = self.workflow.initial_state
+        if not self.actual_path and self.current_state_id is not None:
+            self.actual_path = [self.current_state_id]
 
     def check_workflow(self, state_id: str) -> dict[str, Any]:
         """Returns the current state spec only: action, action_params, transitions."""
@@ -70,6 +77,7 @@ class WorkflowSession:
             }
 
         self.current_state_id = next_state_id
+        self.actual_path.append(next_state_id)
         update = {
             "from_state": current_state_id,
             "to_state": next_state_id,
@@ -78,6 +86,19 @@ class WorkflowSession:
         }
         self.updates.append(update)
         return {"status": "ok", "current_state_id": self.current_state_id, **update}
+
+    def merge_action_result(self, action_result: dict[str, Any]) -> None:
+        """Store source-system-like output for later workflow steps."""
+        self.context["last_action_result"] = action_result
+        external_refs = action_result.get("external_refs", {})
+        if external_refs:
+            self.context.setdefault("external_refs", {}).update(external_refs)
+
+    def set_pending_user_request(self, pending_request: dict[str, Any]) -> None:
+        self.pending_user_request = pending_request
+
+    def clear_pending_user_request(self) -> None:
+        self.pending_user_request = None
 
 
 def set_active_session(session: WorkflowSession) -> None:

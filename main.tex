@@ -62,19 +62,21 @@ paper identifies the core limitations of existing orchestration
 paradigms---code-driven state machines, prompt-driven flows, and
 contemporary multi-agent frameworks---and proposes Workflow as a
 Tool (WaaT) as a principled alternative.  In WaaT, business
-processes are encoded as step-scoped YAML definitions consumed
-incrementally by a super-agent via two dedicated tool calls.  Each
-state transition is committed alongside the agent's explicit
-reasoning, forming a complete audit record.  The pattern yields
-systems that are structurally verifiable before deployment,
-resilient to context window degradation, and maintainable by
-non-engineers.  We situate WaaT within the mature tradition of
+processes are encoded as YAML definitions and exposed to a
+super-agent through two dedicated runtime tool calls.  The model
+may have global workflow context, but state advancement is
+mediated by explicit current-state grounding, transition
+validation, and mandatory reasoning.  Each state transition is
+committed alongside the agent's justification, forming a complete
+audit record.  The pattern yields systems that are structurally
+verifiable before deployment, governable during execution, and
+maintainable by non-engineers.  We situate WaaT within the mature tradition of
 Business Process Management, describe the architecture and
 validation framework, and present a prototype evaluation implemented
 using the Strands agent framework on a 30-case adversarial synthetic
-benchmark, achieving 93.33\% terminal-state accuracy against 80.00\%
-for a workflow-as-prompt baseline, and a 58.71\% reduction in
-per-step token usage relative to full-workflow prompting.
+benchmark.  The evaluation is organised around two production-facing
+claims: single-turn procedural correctness and resumable multi-turn
+execution across user interaction boundaries.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -115,9 +117,9 @@ deployments require.
 
 We propose \emph{Workflow as a Tool} (WaaT), whose central
 contribution is the combination of three ideas: (i) process logic
-encoded as structured, step-scoped YAML; (ii) incremental,
-context-bounded consumption of workflow state via tool calls; and
-(iii) mandatory agent reasoning at every state transition, which
+encoded as structured YAML; (ii) runtime-mediated workflow state
+grounding and transition validation via tool calls; and (iii)
+mandatory agent reasoning at every state transition, which
 constitutes the audit trail.
 
 
@@ -271,13 +273,15 @@ the code that executes it and the prompt that drives it.  This
 makes the definition independently readable, editable, and
 analysable by automated tooling.
 
-\textbf{Step-scoped context.}
-The agent is never given the full workflow definition.  At each
-step it receives only the specification of the current state.
-This bounds token consumption, prevents context degradation over
-long workflows~\cite{liu2023lost}, and focuses the agent on the
-immediate decision.  A fifty-state workflow presents no greater
-cognitive load at any individual step than a three-state workflow.
+\textbf{Current-state grounding with global process context.}
+The agent may receive the full workflow definition as global
+instruction context, matching a realistic prompt-based baseline.
+However, the actionable workflow state is still obtained through
+\texttt{check\_workflow}: at each step the runtime identifies the
+current state, exposes its valid outgoing transitions, and later
+validates the requested update.  Global context helps the model
+interpret process intent; the WaaT tools ensure that state
+advancement remains grounded in the current executable state.
 
 \textbf{Mandatory reasoned transitions.}
 Every state advancement must be accompanied by an explicit
@@ -290,14 +294,23 @@ populate the reasoning field are rejected at the tool level.
 \textbf{Utility agents} are narrow, single-purpose, and stateless.
 Each encapsulates one capability: invoking an external API,
 retrieving a record, classifying a document.  They contain no
-process logic and return structured results to the super-agent.
+process logic and return structured, source-system-shaped results
+to the super-agent: status, data, external references, errors, and
+optionally a recommended next state.
 
 \textbf{The super-agent} is the orchestrator.  It holds the
 current workflow state, invokes utility agents as directed by the
 active step, interprets their outputs against available
 transitions, selects the next state, and calls
 \texttt{update\_workflow} with its reasoning.  Its context is
-scoped to a single step at a time.
+grounded in the current step even when the full workflow is also
+available as instruction context.
+
+\textbf{Workflow sessions} persist the current state, accumulated
+context, pending user requests, and the transition trace.  A WaaT
+execution need not run to a terminal state in a single interaction:
+it may suspend at an interaction boundary, such as a required user
+confirmation, and later resume from the same workflow state.
 
 \textbf{Workflow definitions} are YAML files.  Each defines a set
 of states, an initial state, terminal states, and for each
@@ -309,16 +322,25 @@ with natural-language conditions.
 The super-agent is given access to exactly two workflow-related
 tools.
 
-\texttt{check\_workflow(state\_id)} returns the specification of
-the current state only: the action to execute, its parameters, and
-available transitions.  The agent has no visibility of past or
-future states.
+\texttt{check\_workflow(state\_id)} returns the runtime
+specification of the current state: the action to execute, its
+parameters, and available transitions.  The model may have read
+the full workflow definition, but this tool defines the current
+executable state against which the next update will be validated.
 
 {\sloppy\texttt{update\_workflow(current\_state\_id,~next\_state\_id,~reasoning)} advances the
 workflow and persists the agent's reasoning.}  The
 \texttt{reasoning} field is mandatory.  Calls that omit it are
 rejected.  Reasoning is thus a precondition for advancement, not
 a log entry appended after the fact.
+
+Interaction states use the same state model but do not immediately
+advance the workflow.  For example, a state whose action is
+\texttt{request\_user\_confirmation} returns a user-facing prompt,
+persists the pending request, and suspends execution.  When the
+user responds, the super-agent resumes at that state and calls
+\texttt{update\_workflow} with a reasoned transition grounded in
+the user's response.
 
 
 % ===============================================================
@@ -611,8 +633,11 @@ domains include regulated customer service flows, multi-step
 approval chains, compliance verification sequences, and service
 lifecycle management.
 
-The pattern is not appropriate for open-ended tasks, nor for
-single-action automations requiring no orchestration.
+The pattern is not appropriate for open-ended tasks.  WaaT itself
+is also unnecessary for single-action automations requiring no
+orchestration, although a production request orchestrator may route
+such requests directly to utility agents while reserving WaaT for
+procedural execution.
 
 Three limitations warrant explicit acknowledgement.
 
@@ -668,15 +693,17 @@ such as a cancellation request that also requires billing
 authorisation, save-offer checks, service inventory lookup, and
 case creation.
 
-WaaT addresses this problem by exposing workflow state as a
-tool-mediated interface rather than as static prompt text.  Instead
-of showing the model the entire workflow graph, the orchestration
-layer exposes two workflow-control tools.  \texttt{check\_workflow}
-returns only the current state's action, action parameters, and
-valid outgoing transitions.  \texttt{update\_workflow} advances the
-workflow only when the requested transition is valid and the model
-supplies non-trivial reasoning.  This design makes the workflow
-executable, inspectable, and enforceable at runtime.
+WaaT addresses this problem by making workflow state an executable
+runtime object rather than only static prompt text.  In the
+evaluation, both WaaT and the prompt baseline receive the complete
+workflow definition as global context.  The decisive difference is
+that WaaT also exposes two workflow-control tools.
+\texttt{check\_workflow} grounds the model in the current state's
+action, action parameters, and valid outgoing transitions.
+\texttt{update\_workflow} advances the workflow only when the
+requested transition is valid and the model supplies non-trivial
+reasoning.  This design makes the workflow executable,
+inspectable, and enforceable at runtime.
 
 \subsection{Implementation}
 
@@ -684,21 +711,30 @@ The prototype is implemented using Strands, matching the agent
 framework used in our production environment.  The WaaT control
 functions \texttt{check\_workflow} and \texttt{update\_workflow}
 are implemented as Strands \texttt{@tool} functions and attached
-to a Strands super-agent.  The implementation comprises five
-modules: a YAML workflow loader and state-graph validator
-(\texttt{workflow.py}), the two core Strands tool definitions
-(\texttt{tools.py}), the super-agent loop (\texttt{agent.py}),
-a set of mock utility agents (\texttt{mock\_agents.py}), and a
-reasoning-quality evaluator (\texttt{evaluator.py}).
+to a Strands super-agent.  The implementation comprises a YAML
+workflow loader and state-graph validator (\texttt{workflow.py}),
+the two core Strands tool definitions and workflow session state
+(\texttt{tools.py}), the resumable super-agent loop
+(\texttt{agent.py}), production-shaped result contracts
+(\texttt{contracts.py}), deterministic mock utility agents
+(\texttt{mock\_agents.py}), a stepwise prompt baseline
+(\texttt{baseline.py}), and a reasoning-quality evaluator
+(\texttt{evaluator.py}).
 
-For reproducibility, the offline evaluation invokes the
-Strands-decorated tools directly while using deterministic mock
-utility agents.  This preserves the production integration pattern
-while avoiding variance from live model calls in the reported
-benchmark.  The \texttt{update\_workflow} tool enforces a minimum
-reasoning length at the tool level: calls with fewer than twenty
-words in the reasoning field are rejected and the agent must retry
-before the workflow can advance.
+For reproducibility, the evaluation uses deterministic mock
+utility agents while invoking the workflow-control tools directly.
+The transition choices, prompt baseline, and reasoning-quality
+scoring are Bedrock-backed model calls; the source-system responses
+are deterministic so that differences reflect orchestration
+behaviour rather than external API variance.  The
+\texttt{update\_workflow} tool enforces a minimum reasoning length
+at the tool level: calls with fewer than twenty words in the
+reasoning field are rejected and the agent must retry with a
+substantive justification.  A separate multi-turn workflow fixture
+includes a \texttt{request\_user\_confirmation} state; a
+Bedrock-backed runner executes the first turn until suspension,
+resumes with the user's confirmation response, and records the
+resulting path.
 
 \subsection{Experimental Setup}
 \label{subsec:waat-experimental-setup}
@@ -764,17 +800,19 @@ answer-key driven:
 \end{itemize}
 
 \paragraph{Baseline.}
-We compare WaaT against a pure workflow-as-prompt baseline in
-which the full workflow YAML is placed directly in the system
-prompt and the controller predicts the workflow path without
-calling \texttt{check\_workflow} or \texttt{update\_workflow}.
-This represents a common alternative design: the model receives
-the complete procedure as prompt context and is instructed to
-follow it.  The baseline has access to the entire workflow
-definition but receives no stepwise tool constraints, transition
-validation, or mandatory transition reasoning.  Token counts for
-both conditions are recorded using the Anthropic API's usage
-fields.
+We compare WaaT against a stepwise workflow-as-prompt baseline.
+Both conditions receive the complete workflow definition as static
+instruction context.  At each step, the baseline receives the
+current case context and utility-agent output, then predicts the
+next state without calling \texttt{check\_workflow} or
+\texttt{update\_workflow}.  This represents a common alternative
+design: the model is instructed to follow the complete procedure,
+but transitions are not externally validated and reasoning is not
+a precondition for state advancement.  WaaT receives the same
+global workflow context but must advance through the runtime tools.
+Token counts for both conditions are recorded using the Anthropic
+API's usage fields and interpreted as execution cost or overhead,
+not as the primary benefit.
 
 \subsection{Metrics}
 
@@ -794,9 +832,11 @@ We report five metrics across the 30 test cases:
         call (1\,=\,trivial or empty, 3\,=\,adequate,
         5\,=\,specific and well-grounded in workflow evidence).
         We report mean score and distribution.
-  \item \textbf{Token usage per step}: mean prompt-plus-completion
-        tokens per \texttt{check\_workflow}--\texttt{update\_workflow}
-        cycle for both WaaT and baseline conditions.
+  \item \textbf{Token usage}: mean prompt-plus-completion
+        tokens per case and per step for WaaT, mean tokens per
+        case for the stepwise prompt baseline, and the aggregate
+        WaaT-versus-baseline token delta.  This is reported as
+        cost/overhead, not as the central success criterion.
 \end{enumerate}
 
 \subsection{Results}
@@ -804,88 +844,62 @@ We report five metrics across the 30 test cases:
 
 \begin{table}[t]
 \centering
-\caption{Aggregate WaaT results compared with a pure
-workflow-as-prompt baseline across 30 synthetic service requests.}
+\caption{Single-turn WaaT results compared with a stepwise
+workflow-as-prompt baseline across 30 synthetic service requests.
+Values should be regenerated after any prompt or baseline change.}
 \label{tab:waat-results}
 \begin{tabular}{lc}
 \hline
 \textbf{Metric} & \textbf{Result} \\
 \hline
-WaaT transition accuracy             & 85.00\% \\
-Prompt baseline transition accuracy  & 80.00\% \\
-WaaT path accuracy                   & 83.33\% \\
-Prompt baseline path accuracy        & 73.33\% \\
-WaaT terminal state accuracy         & 93.33\% \\
-Prompt baseline terminal accuracy    & 80.00\% \\
-Mean reasoning quality               & 4.86 / 5 \\
-Mean WaaT tokens / step              & 142.88 \\
-Mean full-workflow tokens / step     & 346.02 \\
-Mean prompt baseline tokens / case   & 284.47 \\
-Token reduction                      & 58.71\% \\
+WaaT transition accuracy             & pending rerun \\
+Prompt baseline transition accuracy  & pending rerun \\
+WaaT path accuracy                   & pending rerun \\
+Prompt baseline path accuracy        & pending rerun \\
+WaaT terminal state accuracy         & pending rerun \\
+Prompt baseline terminal accuracy    & pending rerun \\
+Mean reasoning quality               & pending rerun \\
+Mean WaaT tokens / step              & pending rerun \\
+Mean prompt baseline tokens / case   & pending rerun \\
+WaaT vs baseline token delta         & pending rerun \\
 \hline
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:waat-results} reports performance under adversarial
-stress-test conditions; clean-path evaluation produces 100\%
-terminal accuracy across all categories.  Under the adversarial
-setting, WaaT achieved 85.00\%
-transition accuracy and 83.33\% exact path accuracy under the
-adversarial synthetic setting.  The pure workflow-as-prompt
-baseline achieved 80.00\% transition accuracy and 73.33\% path
-accuracy.  WaaT therefore improved transition accuracy by 5.00
-percentage points and exact path accuracy by 10.00 percentage
-points.  The largest gap appears in terminal-state accuracy: WaaT
-reached the correct terminal state in 93.33\% of cases, compared
-with 80.00\% for the prompt baseline.  This suggests that exposing
-workflow state through tools improves procedural reliability,
-especially when intermediate utility-agent signals are ambiguous
-or locally incomplete.
+Table~\ref{tab:waat-results} is populated by
+\texttt{run\_evaluation.py}.  Because both conditions receive the
+full workflow definition as instruction context, the reported
+values must be regenerated whenever prompts, mock payloads, or
+workflow definitions change.  The intended comparison is whether
+WaaT's externally validated transitions, explicit current-state
+grounding, and persisted reasoning improve procedural governance
+when intermediate utility-agent signals are ambiguous or locally
+incomplete.
 
 The distinction between path accuracy and terminal accuracy is
 important for workflow orchestration.  Terminal correctness
 captures whether the request was ultimately completed or escalated
 correctly, whereas path accuracy captures whether the agent
-followed the intended procedural route.  Some WaaT errors affected
-intermediate routing while still reaching the correct terminal
-outcome.  By contrast, the prompt baseline was more likely to skip
-or misapply procedural states because it made path-level decisions
-from the full workflow prompt without stepwise transition checks.
+followed the intended procedural route.  The trace-level outputs
+are used to inspect whether failures arise from classification
+ambiguity, over-confident utility-agent outputs, or locally
+plausible transitions that are globally suboptimal.
 
-Failures were concentrated in five cases.  Two account-query cases
-were routed directly to complaint handling because the requests
-contained strong dissatisfaction cues; both still reached the
-correct terminal state.  One service-change case should have been
-escalated for manual approval but was incorrectly completed by the
-mock service agent.  Two edge cases were over-classified rather
-than escalated at classification time; one subsequently escalated
-via a downstream state, while the other incorrectly completed.
-These errors expose realistic production failure modes: ambiguity
-at the classification boundary, over-confident utility-agent
-outputs, and paths that are locally plausible but globally
-suboptimal.
+Reasoning quality is scored separately from path correctness.  This
+supports the auditability claim: even when a transition is wrong,
+the persisted justification can reveal whether the error came from
+weak evidence, ambiguous state conditions, or a misleading
+utility-agent result.
 
-Reasoning quality was high, with a mean score of 4.86 out of 5.
-The scoring distribution contained 52 reasoning steps scored at 5
-and 4 steps scored at 3.  Lower-scored steps corresponded to
-ambiguous classifier outputs, where the generated justification
-was adequate but less grounded in specific workflow evidence.
-This result supports the claim that the mandatory
-\texttt{reasoning} field provides useful audit information while
-also surfacing cases where justifications warrant closer review.
-
-WaaT reduced step-level context usage substantially relative to
-full-workflow prompting.  The WaaT agent consumed an estimated
-142.88 tokens per step compared with 346.02 tokens per step when
-the full workflow YAML was included in each step-level prompt,
-a 58.71\% reduction.  The pure prompt baseline used an estimated
-284.47 tokens per case for one-shot path prediction; although
-cheaper in absolute terms for short workflows, it produced lower
-path and terminal accuracy because it lacked stepwise transition
-validation.  In production settings with many larger workflows,
-the context advantage of WaaT is expected to grow because the
-agent receives only the current state specification rather than
-every possible state across all workflows.
+The single-turn evaluation records token usage for both conditions.
+Since WaaT and the baseline both receive the full workflow
+definition, token measurements should be interpreted as the cost or
+overhead of adding runtime workflow-control tools, not as a claim
+that WaaT primarily reduces prompt context.  If the prompt baseline
+matches or exceeds WaaT accuracy on some generated workflows, this
+is consistent with the experimental design: global context can help
+reasoning, while WaaT's contribution is runtime validation,
+auditability, and resumable state control.
 
 \subsection{Production Implications}
 
@@ -898,25 +912,35 @@ settings, workflow-as-prompt approaches require the prompt to
 carry an increasingly large procedural burden.  As the number of
 workflows grows, the model must identify the relevant workflow,
 ignore irrelevant branches, remember transition constraints, and
-apply policy or authorisation gates without a runtime enforcement
-mechanism.
+apply policy or authorisation gates.  Even when the full workflow
+is present in context, prompt-only control still lacks a runtime
+mechanism that can reject invalid state updates or require
+transition reasoning before advancement.
 
-WaaT shifts this burden from prompt text into executable tooling.
-Workflow state becomes an operational object that the agent
-queries and updates, rather than background prose that the agent
-is expected to follow.  This makes procedural behaviour more
-modular, auditable, and scalable: new workflows can be added as
-YAML definitions rather than prompt rewrites; transition
-validation is enforced by code; and each update is logged with
-explicit reasoning.  Critically, when failures do occur they are
-concentrated at known classification boundaries, logged with the
-reasoning that produced them, and therefore recoverable---a
-stronger operational guarantee than a higher-accuracy system
-that fails silently or unpredictably.  These properties are
-particularly important for enterprise agent systems, where
-production-readiness requires moving beyond prompt-only control
-toward architectures that combine language-model flexibility with
-software-enforced process boundaries.
+WaaT shifts the decisive control point from prompt text into
+executable tooling.  Workflow state becomes an operational object
+that the agent queries and updates, rather than only background
+prose that the agent is expected to follow.  This makes procedural
+behaviour more modular, auditable, and scalable: new workflows can
+be added as YAML definitions; transition validation is enforced by
+code; and each update is logged with explicit reasoning.
+Critically, when failures do occur they are concentrated at known
+classification boundaries, logged with the reasoning that produced
+them, and therefore recoverable---a stronger operational guarantee
+than a higher-accuracy system that fails silently or
+unpredictably.  These properties are particularly important for
+enterprise agent systems, where production-readiness requires
+moving beyond prompt-only control toward architectures that
+combine language-model flexibility with software-enforced process
+boundaries.
+
+The same state model supports conversational execution.  In the
+multi-turn service-change fixture, WaaT pauses at a confirmation
+state, returns a prompt to the user, persists the pending request,
+and resumes after the user's reply.  This keeps the central
+runtime guarantee intact across turns: the resumed transition is
+still validated against the current state's outgoing edges and is
+still accompanied by explicit reasoning.
 
 
 % ===============================================================
@@ -927,12 +951,12 @@ software-enforced process boundaries.
 We have presented Workflow as a Tool, an architectural pattern for
 LLM-based process automation that addresses the principal
 shortcomings of code-driven, prompt-driven, and multi-agent
-orchestration paradigms.  By encoding business logic as step-scoped
-YAML definitions, exposing workflow state through two well-defined
-tool interfaces, and requiring every state transition to carry an
-explicit agent-generated justification, WaaT produces agent systems
-that are simultaneously flexible, auditable, and maintainable by
-non-engineers.
+orchestration paradigms.  By encoding business logic as YAML
+workflow definitions, exposing executable workflow state through
+two well-defined tool interfaces, and requiring every state
+transition to carry an explicit agent-generated justification,
+WaaT produces agent systems that are simultaneously flexible,
+auditable, and maintainable by non-engineers.
 
 WaaT is positioned within the mature tradition of Business Process
 Management.  The core contribution relative to classical BPM
@@ -945,13 +969,18 @@ interpreter, and from a logging wrapper around an existing agent
 framework.
 
 A prototype evaluation implemented using the Strands agent
-framework on a 30-case adversarial synthetic benchmark confirmed
-the pattern's key claims: 93.33\% terminal-state accuracy against
-80.00\% for a workflow-as-prompt baseline, high reasoning quality
-(mean 4.86/5), and a 58.71\% reduction in per-step token usage
-relative to full-workflow prompting.  Observed failures were
-interpretable and consistent with known boundary conditions in
-classification and utility-agent design.
+framework is organised around two claims: single-turn procedural
+correctness on a compact adversarial service-request benchmark,
+and resumability across a user-confirmation boundary.  The reported
+metrics should be regenerated after changes to prompts, baseline
+structure, or utility-agent payload contracts.
+
+The implementation also demonstrates how the same primitive can
+support resumable, multi-turn workflow execution through explicit
+interaction states.  Broader request-level orchestration---for
+example routing a user request to a direct utility-agent call,
+a WaaT workflow, or a hybrid path---remains outside the evaluated
+kernel and is left to future work.
 
 The most consequential property of the pattern may be
 organisational rather than technical: it returns ownership of

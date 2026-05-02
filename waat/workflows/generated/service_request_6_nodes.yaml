@@ -11,13 +11,17 @@ states:
       request_text: ''
     transitions:
     - to: HANDLE_ACCOUNT_QUERY
-      condition: request relates to account information or balance
+      condition: action_result.status == "success" and action_result.data.classification
+        == "account_query"
     - to: HANDLE_SERVICE_CHANGE
-      condition: request is a service modification or upgrade
+      condition: action_result.status == "success" and action_result.data.classification
+        == "service_change"
     - to: HANDLE_COMPLAINT
-      condition: request contains a complaint or dissatisfaction
+      condition: action_result.status == "success" and action_result.data.classification
+        == "complaint"
     - to: REQUEST_ESCALATED
-      condition: request cannot be classified or contains sensitive content
+      condition: action_result.status != "success" or action_result.data.classification
+        == "unclassifiable_or_sensitive"
   HANDLE_ACCOUNT_QUERY:
     action: call_account_agent
     action_params:
@@ -25,11 +29,16 @@ states:
       query_type: ''
     transitions:
     - to: REQUEST_COMPLETE
-      condition: query answered and customer confirmed satisfied
+      condition: action_result.status == "success" and action_result.data.customer_satisfied
+        == true and action_result.data.data_available == true and action_result.data.query_type
+        not in ["payment_status", "balance_dispute"]
     - to: HANDLE_COMPLAINT
-      condition: customer dissatisfied with account information provided
+      condition: action_result.status == "success" and action_result.data.query_type in
+        ["payment_status", "balance_dispute"] and action_result.data.data_available
+        == true
     - to: REQUEST_ESCALATED
-      condition: account data unavailable or agent cannot resolve
+      condition: action_result.status != "success" or action_result.data.data_available
+        == false
   HANDLE_SERVICE_CHANGE:
     action: call_service_agent
     action_params:
@@ -37,9 +46,11 @@ states:
       change_type: ''
     transitions:
     - to: REQUEST_COMPLETE
-      condition: service change completed and customer confirmed
+      condition: action_result.status == "success" and action_result.data.completed
+        == true and action_result.data.manual_approval_required == false
     - to: REQUEST_ESCALATED
-      condition: change cannot be processed or requires manual approval
+      condition: action_result.status != "success" or action_result.data.completed == false
+        or action_result.data.manual_approval_required == true
   HANDLE_COMPLAINT:
     action: call_complaint_agent
     action_params:
@@ -47,6 +58,8 @@ states:
       complaint_text: ''
     transitions:
     - to: REQUEST_COMPLETE
-      condition: resolution offered and customer accepted
+      condition: action_result.status == "success" and action_result.data.resolution_offered
+        == true and action_result.data.customer_accepted == true
     - to: REQUEST_ESCALATED
-      condition: customer not satisfied or issue requires escalation
+      condition: action_result.status != "success" or action_result.data.resolution_offered
+        == false or action_result.data.customer_accepted == false

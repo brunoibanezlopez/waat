@@ -11,13 +11,12 @@ states:
       request_context: ''
     transitions:
     - to: VERIFY_CUSTOMER_IDENTITY
-      condition: request maps to account, billing, service, complaint, or field-support
-        handling
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VERIFY_CUSTOMER_IDENTITY"
     - to: REVIEW_SECURITY_OR_PRIVACY_RISK
-      condition: request contains sensitive data, account takeover risk, or policy-bypass
-        language
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REVIEW_SECURITY_OR_PRIVACY_RISK"
     - to: REQUEST_ESCALATED
-      condition: request cannot be classified with sufficient confidence
+      condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state
+        == "REQUEST_ESCALATED"
   VERIFY_CUSTOMER_IDENTITY:
     action: call_identity_verification_agent
     action_params:
@@ -25,10 +24,9 @@ states:
       request_context: ''
     transitions:
     - to: RETRIEVE_CUSTOMER_PROFILE
-      condition: customer identity is verified or low-risk assisted service is allowed
+      condition: action_result.status == "success" and action_result.recommended_next_state == "RETRIEVE_CUSTOMER_PROFILE"
     - to: REVIEW_SECURITY_OR_PRIVACY_RISK
-      condition: identity verification fails or request involves another customer's
-        data
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REVIEW_SECURITY_OR_PRIVACY_RISK"
   RETRIEVE_CUSTOMER_PROFILE:
     action: call_customer_profile_agent
     action_params:
@@ -36,15 +34,14 @@ states:
       request_context: ''
     transitions:
     - to: CHECK_ACCOUNT_STATUS
-      condition: request is about account information, payment status, ownership,
-        or billing
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_ACCOUNT_STATUS"
     - to: CHECK_CONTRACT_TERMS
-      condition: request is a service modification, upgrade, relocation, or contract
-        exception
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_CONTRACT_TERMS"
     - to: CAPTURE_COMPLAINT_DETAILS
-      condition: request is primarily a complaint or dissatisfaction event
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CAPTURE_COMPLAINT_DETAILS"
     - to: REQUEST_ESCALATED
-      condition: profile is unavailable or does not match the requesting party
+      condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state
+        == "REQUEST_ESCALATED"
   REVIEW_SECURITY_OR_PRIVACY_RISK:
     action: call_compliance_agent
     action_params:
@@ -52,10 +49,16 @@ states:
       request_context: ''
     transitions:
     - to: REQUEST_ESCALATED
-      condition: privacy, security, or policy risk requires manual handling
+      condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state
+        == "REQUEST_ESCALATED"
     - to: VERIFY_CUSTOMER_IDENTITY
-      condition: risk is cleared and the request may continue through normal identity
-        checks
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VERIFY_CUSTOMER_IDENTITY"
+    - to: VALIDATE_CUSTOMER_CONSENT
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VALIDATE_CUSTOMER_CONSENT"
+    - to: REVIEW_VULNERABLE_CUSTOMER_FLAG
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REVIEW_VULNERABLE_CUSTOMER_FLAG"
+    - to: CHECK_FRAUD_SIGNALS
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_FRAUD_SIGNALS"
   CHECK_ACCOUNT_STATUS:
     action: call_account_status_agent
     action_params:
@@ -63,15 +66,15 @@ states:
       request_context: ''
     transitions:
     - to: RETRIEVE_BILLING_PROFILE
-      condition: billing profile should be retrieved before answering account or payment
-        questions
+      condition: action_result.status == "success" and action_result.recommended_next_state == "RETRIEVE_BILLING_PROFILE"
     - to: HANDLE_ACCOUNT_QUERY
-      condition: account is active and the requested data is available
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_ACCOUNT_QUERY"
     - to: ASSESS_BILLING_DISPUTE
-      condition: account request contains payment or balance-dispute indicators
+      condition: action_result.status == "success" and action_result.recommended_next_state == "ASSESS_BILLING_DISPUTE"
     - to: CREATE_SUPPORT_TICKET
-      condition: account data is unavailable, inconsistent, or requires back-office
-        recovery
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
+    - to: VERIFY_ACCOUNT_OWNERSHIP
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VERIFY_ACCOUNT_OWNERSHIP"
   HANDLE_ACCOUNT_QUERY:
     action: call_account_agent
     action_params:
@@ -79,13 +82,15 @@ states:
       request_context: ''
     transitions:
     - to: VALIDATE_ACCOUNT_CONTACTS
-      condition: account response requires contact-data validation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VALIDATE_ACCOUNT_CONTACTS"
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: query answered and customer is satisfied
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
     - to: ASSESS_BILLING_DISPUTE
-      condition: answer reveals a payment, charge, or statement dispute
+      condition: action_result.status == "success" and action_result.recommended_next_state == "ASSESS_BILLING_DISPUTE"
     - to: CREATE_SUPPORT_TICKET
-      condition: account data cannot be retrieved automatically
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
+    - to: CHECK_KNOWLEDGE_BASE
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_KNOWLEDGE_BASE"
   ASSESS_BILLING_DISPUTE:
     action: call_billing_dispute_agent
     action_params:
@@ -93,13 +98,13 @@ states:
       request_context: ''
     transitions:
     - to: REVIEW_BILLING_ADJUSTMENT
-      condition: billing dispute requires adjustment or goodwill review
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REVIEW_BILLING_ADJUSTMENT"
     - to: HANDLE_COMPLAINT
-      condition: billing dispute can be addressed through complaint-resolution handling
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: refund, credit, or adjustment exceeds automated authority
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
     - to: CREATE_SUPPORT_TICKET
-      condition: billing records are incomplete or require back-office investigation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   CHECK_CONTRACT_TERMS:
     action: call_contract_agent
     action_params:
@@ -107,19 +112,19 @@ states:
       request_context: ''
     transitions:
     - to: DESIGN_CUSTOM_NETWORK_OPTION
-      condition: custom network design requests require solution design
+      condition: action_result.status == "success" and action_result.recommended_next_state == "DESIGN_CUSTOM_NETWORK_OPTION"
     - to: CHECK_SITE_SERVICEABILITY
-      condition: relocation requests require site serviceability checks
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_SITE_SERVICEABILITY"
     - to: VERIFY_SERVICE_INVENTORY
-      condition: service inventory must be verified before change eligibility
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VERIFY_SERVICE_INVENTORY"
     - to: HANDLE_SERVICE_CHANGE
-      condition: requested change is permitted under the active contract
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_SERVICE_CHANGE"
     - to: SCHEDULE_TECHNICIAN
-      condition: relocation or installation request requires field scheduling
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SCHEDULE_TECHNICIAN"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: change exceeds contract limits or requires commercial approval
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
     - to: CREATE_SUPPORT_TICKET
-      condition: contract data is missing or inconsistent
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   HANDLE_SERVICE_CHANGE:
     action: call_service_agent
     action_params:
@@ -127,13 +132,15 @@ states:
       request_context: ''
     transitions:
     - to: CONFIGURE_SERVICE_ORDER
-      condition: eligible service change requires an order configuration step
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CONFIGURE_SERVICE_ORDER"
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: service change completed successfully
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: change requires manual approval or custom design
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
     - to: CREATE_SUPPORT_TICKET
-      condition: service platform cannot complete the change automatically
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
+    - to: CHECK_RETENTION_ELIGIBILITY
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_RETENTION_ELIGIBILITY"
   REQUEST_MANUAL_APPROVAL:
     action: call_approval_agent
     action_params:
@@ -141,9 +148,10 @@ states:
       request_context: ''
     transitions:
     - to: REQUEST_ESCALATED
-      condition: manual approval is required before the customer request can proceed
+      condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state
+        == "REQUEST_ESCALATED"
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: approval is granted and customer-facing confirmation can be sent
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
   CAPTURE_COMPLAINT_DETAILS:
     action: call_complaint_intake_agent
     action_params:
@@ -151,17 +159,15 @@ states:
       request_context: ''
     transitions:
     - to: REVIEW_REGULATORY_RISK
-      condition: regulatory or unresolved complaints require risk review
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REVIEW_REGULATORY_RISK"
     - to: CHECK_SERVICE_HEALTH
-      condition: service-related complaint requires health diagnostics
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_SERVICE_HEALTH"
     - to: CHECK_SERVICE_OUTAGE
-      condition: complaint concerns service quality, outage, speed, installation,
-        or technician attendance
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_SERVICE_OUTAGE"
     - to: HANDLE_COMPLAINT
-      condition: complaint can proceed directly to resolution handling
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: complaint indicates regulatory, executive, or unresolved escalation
-        risk
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
   HANDLE_COMPLAINT:
     action: call_complaint_agent
     action_params:
@@ -169,11 +175,13 @@ states:
       request_context: ''
     transitions:
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: resolution offered and accepted
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: customer remains dissatisfied or issue requires specialist escalation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
     - to: CREATE_SUPPORT_TICKET
-      condition: resolution requires follow-up work by another team
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
+    - to: ASSESS_SERVICE_CREDIT
+      condition: action_result.status == "success" and action_result.recommended_next_state == "ASSESS_SERVICE_CREDIT"
   CHECK_SERVICE_OUTAGE:
     action: call_outage_agent
     action_params:
@@ -181,13 +189,13 @@ states:
       request_context: ''
     transitions:
     - to: RUN_LINE_TEST
-      condition: service outage or speed complaint requires a line test
+      condition: action_result.status == "success" and action_result.recommended_next_state == "RUN_LINE_TEST"
     - to: SCHEDULE_TECHNICIAN
-      condition: field visit or installation remediation is required
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SCHEDULE_TECHNICIAN"
     - to: HANDLE_COMPLAINT
-      condition: service issue can be resolved or compensated without field dispatch
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
     - to: CREATE_SUPPORT_TICKET
-      condition: network investigation is required before resolution
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   SCHEDULE_TECHNICIAN:
     action: call_field_service_agent
     action_params:
@@ -195,9 +203,11 @@ states:
       request_context: ''
     transitions:
     - to: CREATE_SUPPORT_TICKET
-      condition: technician appointment is scheduled and must be tracked
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: field dispatch requires approval or specialist coordination
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
+    - to: CHECK_APPOINTMENT_HISTORY
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_APPOINTMENT_HISTORY"
   CREATE_SUPPORT_TICKET:
     action: call_ticketing_agent
     action_params:
@@ -205,9 +215,16 @@ states:
       request_context: ''
     transitions:
     - to: REQUEST_ESCALATED
-      condition: ticket requires manual queue ownership or specialist follow-up
+      condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state
+        == "REQUEST_ESCALATED"
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: ticket created and customer can be notified of next steps
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
+    - to: OPEN_CASE_RECORD
+      condition: action_result.status == "success" and action_result.recommended_next_state == "OPEN_CASE_RECORD"
+    - to: ASSIGN_SPECIALIST_QUEUE
+      condition: action_result.status == "success" and action_result.recommended_next_state == "ASSIGN_SPECIALIST_QUEUE"
+    - to: NOTIFY_BACK_OFFICE
+      condition: action_result.status == "success" and action_result.recommended_next_state == "NOTIFY_BACK_OFFICE"
   SEND_CUSTOMER_CONFIRMATION:
     action: call_notification_agent
     action_params:
@@ -215,11 +232,11 @@ states:
       request_context: ''
     transitions:
     - to: PREPARE_CUSTOMER_SUMMARY
-      condition: customer communication should include a structured case summary
+      condition: action_result.status == "success" and action_result.recommended_next_state == "PREPARE_CUSTOMER_SUMMARY"
     - to: LOG_INTERACTION
-      condition: customer confirmation has been sent successfully
+      condition: action_result.status == "success" and action_result.recommended_next_state == "LOG_INTERACTION"
     - to: CREATE_SUPPORT_TICKET
-      condition: confirmation failed and follow-up tracking is required
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   LOG_INTERACTION:
     action: call_audit_log_agent
     action_params:
@@ -227,11 +244,11 @@ states:
       request_context: ''
     transitions:
     - to: RECONCILE_CASE_NOTES
-      condition: interaction logging requires case-note reconciliation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "RECONCILE_CASE_NOTES"
     - to: CLOSE_REQUEST
-      condition: interaction notes, decision rationale, and outcome are recorded
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CLOSE_REQUEST"
     - to: CREATE_SUPPORT_TICKET
-      condition: audit log cannot be completed automatically
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   CLOSE_REQUEST:
     action: call_closure_agent
     action_params:
@@ -239,9 +256,14 @@ states:
       request_context: ''
     transitions:
     - to: REQUEST_COMPLETE
-      condition: all required customer-facing and audit steps are complete
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_COMPLETE"
     - to: REQUEST_ESCALATED
-      condition: closure check identifies unresolved operational risk
+      condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state
+        == "REQUEST_ESCALATED"
+    - to: QUALITY_REVIEW_SAMPLE
+      condition: action_result.status == "success" and action_result.recommended_next_state == "QUALITY_REVIEW_SAMPLE"
+    - to: SURVEY_CUSTOMER_SATISFACTION
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SURVEY_CUSTOMER_SATISFACTION"
   VALIDATE_ACCOUNT_CONTACTS:
     action: call_contact_validation_agent
     action_params:
@@ -249,9 +271,9 @@ states:
       request_context: ''
     transitions:
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: validated contact records allow customer confirmation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
     - to: CREATE_SUPPORT_TICKET
-      condition: contact records require correction
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   RETRIEVE_BILLING_PROFILE:
     action: call_billing_profile_agent
     action_params:
@@ -259,11 +281,11 @@ states:
       request_context: ''
     transitions:
     - to: RECOVER_MISSING_ACCOUNT_DATA
-      condition: missing account data requires recovery before a response can be given
+      condition: action_result.status == "success" and action_result.recommended_next_state == "RECOVER_MISSING_ACCOUNT_DATA"
     - to: HANDLE_ACCOUNT_QUERY
-      condition: billing profile supports a standard account answer
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_ACCOUNT_QUERY"
     - to: VALIDATE_PAYMENT_HISTORY
-      condition: payment history or charges must be checked
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VALIDATE_PAYMENT_HISTORY"
   VALIDATE_PAYMENT_HISTORY:
     action: call_payment_history_agent
     action_params:
@@ -271,9 +293,9 @@ states:
       request_context: ''
     transitions:
     - to: ASSESS_BILLING_DISPUTE
-      condition: payment history confirms a dispute or mismatch
+      condition: action_result.status == "success" and action_result.recommended_next_state == "ASSESS_BILLING_DISPUTE"
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: payment history resolves the question
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
   REVIEW_BILLING_ADJUSTMENT:
     action: call_credit_assessment_agent
     action_params:
@@ -281,9 +303,9 @@ states:
       request_context: ''
     transitions:
     - to: HANDLE_COMPLAINT
-      condition: approved adjustment can be offered as complaint resolution
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: credit or refund exceeds automated threshold
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
   VERIFY_ACCOUNT_OWNERSHIP:
     action: call_ownership_agent
     action_params:
@@ -291,9 +313,9 @@ states:
       request_context: ''
     transitions:
     - to: HANDLE_ACCOUNT_QUERY
-      condition: ownership is verified
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_ACCOUNT_QUERY"
     - to: CREATE_SUPPORT_TICKET
-      condition: ownership records require back-office review
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   RECOVER_MISSING_ACCOUNT_DATA:
     action: call_data_recovery_agent
     action_params:
@@ -301,9 +323,9 @@ states:
       request_context: ''
     transitions:
     - to: CREATE_SUPPORT_TICKET
-      condition: data recovery requires manual queue handling
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
     - to: HANDLE_ACCOUNT_QUERY
-      condition: missing data is recovered
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_ACCOUNT_QUERY"
   VERIFY_SERVICE_INVENTORY:
     action: call_inventory_agent
     action_params:
@@ -311,9 +333,9 @@ states:
       request_context: ''
     transitions:
     - to: ASSESS_CHANGE_ELIGIBILITY
-      condition: service inventory supports the requested change
+      condition: action_result.status == "success" and action_result.recommended_next_state == "ASSESS_CHANGE_ELIGIBILITY"
     - to: CREATE_SUPPORT_TICKET
-      condition: inventory is missing or inconsistent
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   ASSESS_CHANGE_ELIGIBILITY:
     action: call_change_eligibility_agent
     action_params:
@@ -321,9 +343,9 @@ states:
       request_context: ''
     transitions:
     - to: HANDLE_SERVICE_CHANGE
-      condition: change is eligible for automated fulfilment
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_SERVICE_CHANGE"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: change requires commercial or technical approval
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
   CHECK_SITE_SERVICEABILITY:
     action: call_serviceability_agent
     action_params:
@@ -331,9 +353,9 @@ states:
       request_context: ''
     transitions:
     - to: SCHEDULE_TECHNICIAN
-      condition: site visit or installation appointment is required
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SCHEDULE_TECHNICIAN"
     - to: HANDLE_SERVICE_CHANGE
-      condition: site is serviceable without field work
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_SERVICE_CHANGE"
   DESIGN_CUSTOM_NETWORK_OPTION:
     action: call_solution_design_agent
     action_params:
@@ -341,9 +363,9 @@ states:
       request_context: ''
     transitions:
     - to: REQUEST_MANUAL_APPROVAL
-      condition: custom design must be reviewed by engineering
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
     - to: CREATE_SUPPORT_TICKET
-      condition: design work item is created for solutioning
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   CONFIGURE_SERVICE_ORDER:
     action: call_order_config_agent
     action_params:
@@ -351,9 +373,9 @@ states:
       request_context: ''
     transitions:
     - to: SUBMIT_SERVICE_ORDER
-      condition: order configuration is valid
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SUBMIT_SERVICE_ORDER"
     - to: CREATE_SUPPORT_TICKET
-      condition: order configuration failed validation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   SUBMIT_SERVICE_ORDER:
     action: call_order_submission_agent
     action_params:
@@ -361,9 +383,9 @@ states:
       request_context: ''
     transitions:
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: service order is submitted
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
     - to: CREATE_SUPPORT_TICKET
-      condition: order submission failed and requires follow-up
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   CHECK_SERVICE_HEALTH:
     action: call_service_health_agent
     action_params:
@@ -371,11 +393,11 @@ states:
       request_context: ''
     transitions:
     - to: CHECK_SERVICE_OUTAGE
-      condition: service health review requires outage correlation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CHECK_SERVICE_OUTAGE"
     - to: RUN_LINE_TEST
-      condition: service-health signals require technical diagnostics
+      condition: action_result.status == "success" and action_result.recommended_next_state == "RUN_LINE_TEST"
     - to: HANDLE_COMPLAINT
-      condition: health check supports complaint resolution
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
   RUN_LINE_TEST:
     action: call_line_test_agent
     action_params:
@@ -383,9 +405,9 @@ states:
       request_context: ''
     transitions:
     - to: SCHEDULE_TECHNICIAN
-      condition: line test indicates premises or field fault
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SCHEDULE_TECHNICIAN"
     - to: HANDLE_COMPLAINT
-      condition: line test does not require dispatch
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
   CHECK_APPOINTMENT_HISTORY:
     action: call_appointment_agent
     action_params:
@@ -393,9 +415,9 @@ states:
       request_context: ''
     transitions:
     - to: SCHEDULE_TECHNICIAN
-      condition: new or replacement appointment is required
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SCHEDULE_TECHNICIAN"
     - to: HANDLE_COMPLAINT
-      condition: appointment issue can be compensated without dispatch
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
   ASSESS_SERVICE_CREDIT:
     action: call_service_credit_agent
     action_params:
@@ -403,9 +425,9 @@ states:
       request_context: ''
     transitions:
     - to: HANDLE_COMPLAINT
-      condition: service credit can resolve the complaint
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: credit requires approval
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
   REVIEW_REGULATORY_RISK:
     action: call_regulatory_agent
     action_params:
@@ -413,9 +435,9 @@ states:
       request_context: ''
     transitions:
     - to: REQUEST_MANUAL_APPROVAL
-      condition: formal complaint or regulatory language requires escalation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
     - to: HANDLE_COMPLAINT
-      condition: risk is low enough for standard complaint handling
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
   CHECK_RETENTION_ELIGIBILITY:
     action: call_retention_agent
     action_params:
@@ -423,9 +445,9 @@ states:
       request_context: ''
     transitions:
     - to: ASSESS_RETENTION_OFFER
-      condition: customer is eligible for save or goodwill offer
+      condition: action_result.status == "success" and action_result.recommended_next_state == "ASSESS_RETENTION_OFFER"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: retention exception requires approval
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
   ASSESS_RETENTION_OFFER:
     action: call_offer_agent
     action_params:
@@ -433,9 +455,9 @@ states:
       request_context: ''
     transitions:
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: offer is accepted and can be confirmed
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
     - to: HANDLE_COMPLAINT
-      condition: offer is rejected and complaint handling continues
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_COMPLAINT"
   OPEN_CASE_RECORD:
     action: call_case_record_agent
     action_params:
@@ -443,9 +465,9 @@ states:
       request_context: ''
     transitions:
     - to: CREATE_SUPPORT_TICKET
-      condition: case record requires queue ownership
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: case record is complete and customer can be notified
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
   ASSIGN_SPECIALIST_QUEUE:
     action: call_queue_assignment_agent
     action_params:
@@ -453,9 +475,10 @@ states:
       request_context: ''
     transitions:
     - to: REQUEST_ESCALATED
-      condition: specialist queue accepts ownership
+      condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state
+        == "REQUEST_ESCALATED"
     - to: CREATE_SUPPORT_TICKET
-      condition: queue assignment requires ticket tracking
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   NOTIFY_BACK_OFFICE:
     action: call_back_office_agent
     action_params:
@@ -463,9 +486,9 @@ states:
       request_context: ''
     transitions:
     - to: CREATE_SUPPORT_TICKET
-      condition: back-office team must act asynchronously
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: back-office notification is recorded
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
   CHECK_KNOWLEDGE_BASE:
     action: call_knowledge_agent
     action_params:
@@ -473,9 +496,9 @@ states:
       request_context: ''
     transitions:
     - to: HANDLE_ACCOUNT_QUERY
-      condition: knowledge article answers the request
+      condition: action_result.status == "success" and action_result.recommended_next_state == "HANDLE_ACCOUNT_QUERY"
     - to: CREATE_SUPPORT_TICKET
-      condition: knowledge article does not cover the case
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   VALIDATE_CUSTOMER_CONSENT:
     action: call_consent_agent
     action_params:
@@ -483,9 +506,9 @@ states:
       request_context: ''
     transitions:
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: customer consent is present for the action
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
     - to: REVIEW_SECURITY_OR_PRIVACY_RISK
-      condition: consent is missing or invalid
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REVIEW_SECURITY_OR_PRIVACY_RISK"
   REVIEW_VULNERABLE_CUSTOMER_FLAG:
     action: call_vulnerability_agent
     action_params:
@@ -493,9 +516,9 @@ states:
       request_context: ''
     transitions:
     - to: REQUEST_MANUAL_APPROVAL
-      condition: vulnerability marker requires assisted handling
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
     - to: VERIFY_CUSTOMER_IDENTITY
-      condition: normal process may continue
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VERIFY_CUSTOMER_IDENTITY"
   CHECK_FRAUD_SIGNALS:
     action: call_fraud_agent
     action_params:
@@ -503,9 +526,9 @@ states:
       request_context: ''
     transitions:
     - to: REVIEW_SECURITY_OR_PRIVACY_RISK
-      condition: fraud indicators are present
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REVIEW_SECURITY_OR_PRIVACY_RISK"
     - to: VERIFY_CUSTOMER_IDENTITY
-      condition: fraud checks are clear
+      condition: action_result.status == "success" and action_result.recommended_next_state == "VERIFY_CUSTOMER_IDENTITY"
   PREPARE_CUSTOMER_SUMMARY:
     action: call_summary_agent
     action_params:
@@ -513,9 +536,9 @@ states:
       request_context: ''
     transitions:
     - to: LOG_INTERACTION
-      condition: summary is prepared and should be logged
+      condition: action_result.status == "success" and action_result.recommended_next_state == "LOG_INTERACTION"
     - to: SEND_CUSTOMER_CONFIRMATION
-      condition: summary requires customer-facing confirmation
+      condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
   RECONCILE_CASE_NOTES:
     action: call_case_notes_agent
     action_params:
@@ -523,9 +546,9 @@ states:
       request_context: ''
     transitions:
     - to: CLOSE_REQUEST
-      condition: case notes are reconciled and the request can be closed
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CLOSE_REQUEST"
     - to: CREATE_SUPPORT_TICKET
-      condition: case notes require manual correction
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CREATE_SUPPORT_TICKET"
   QUALITY_REVIEW_SAMPLE:
     action: call_quality_review_agent
     action_params:
@@ -533,9 +556,9 @@ states:
       request_context: ''
     transitions:
     - to: CLOSE_REQUEST
-      condition: case passes quality review
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CLOSE_REQUEST"
     - to: REQUEST_MANUAL_APPROVAL
-      condition: quality review requires supervisor action
+      condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_MANUAL_APPROVAL"
   SURVEY_CUSTOMER_SATISFACTION:
     action: call_survey_agent
     action_params:
@@ -543,6 +566,6 @@ states:
       request_context: ''
     transitions:
     - to: CLOSE_REQUEST
-      condition: survey invitation is sent
+      condition: action_result.status == "success" and action_result.recommended_next_state == "CLOSE_REQUEST"
     - to: LOG_INTERACTION
-      condition: survey cannot be sent but outcome is logged
+      condition: action_result.status == "success" and action_result.recommended_next_state == "LOG_INTERACTION"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .contracts import AgentActionResult
 from .synthetic_data import expected_path_for_case
 
 
@@ -27,18 +28,23 @@ def call_classifier_agent(case: dict[str, Any], state_id: str) -> dict[str, Any]
         "REQUEST_ESCALATED": "unclassifiable_or_sensitive",
     }
     ambiguous = case["case_id"] in _CLASSIFIER_OVERRIDES
-    return {
-        "agent": "classifier",
-        "classification": label_by_state[next_state],
-        "confidence": 0.58 if ambiguous else (0.94 if next_state != "REQUEST_ESCALATED" else 0.41),
-        "rationale": (
+    rationale = (
             f"Request text contains competing cues; selecting {label_by_state[next_state]} as the most likely route."
             if ambiguous
             else f"Request text maps to {label_by_state[next_state]} based on category cues."
-        ),
-        "ambiguous_signal": ambiguous,
-        "recommended_next_state": next_state,
-    }
+    )
+    return AgentActionResult(
+        agent="classifier",
+        action="call_classifier_agent",
+        status="success",
+        data={
+            "classification": label_by_state[next_state],
+            "confidence": 0.58 if ambiguous else (0.94 if next_state != "REQUEST_ESCALATED" else 0.41),
+            "ambiguous_signal": ambiguous,
+        },
+        recommended_next_state=next_state,
+        rationale=rationale,
+    ).to_dict()
 
 
 def call_account_agent(case: dict[str, Any], state_id: str) -> dict[str, Any]:
@@ -50,14 +56,19 @@ def call_account_agent(case: dict[str, Any], state_id: str) -> dict[str, Any]:
         next_state = "HANDLE_COMPLAINT"
     else:
         next_state = "REQUEST_COMPLETE"
-    return {
-        "agent": "account",
-        "query_type": query_type,
-        "account_summary": "Recent balance, payment status, and contact details retrieved.",
-        "customer_satisfied": next_state == "REQUEST_COMPLETE",
-        "data_available": next_state != "REQUEST_ESCALATED",
-        "recommended_next_state": next_state,
-    }
+    return AgentActionResult(
+        agent="account",
+        action="call_account_agent",
+        status="requires_manual_review" if next_state == "REQUEST_ESCALATED" else "success",
+        data={
+            "query_type": query_type,
+            "account_summary": "Recent balance, payment status, and contact details retrieved.",
+            "customer_satisfied": next_state == "REQUEST_COMPLETE",
+            "data_available": next_state != "REQUEST_ESCALATED",
+        },
+        recommended_next_state=next_state,
+        rationale=f"Account query type {query_type} maps to workflow state {next_state}.",
+    ).to_dict()
 
 
 def call_service_agent(case: dict[str, Any], state_id: str) -> dict[str, Any]:
@@ -72,29 +83,40 @@ def call_service_agent(case: dict[str, Any], state_id: str) -> dict[str, Any]:
         next_state = "REQUEST_COMPLETE"
     else:
         next_state = "REQUEST_COMPLETE"
-    return {
-        "agent": "service",
-        "change_type": change_type,
-        "completed": next_state == "REQUEST_COMPLETE",
-        "manual_approval_required": next_state == "REQUEST_ESCALATED",
-        "confirmation": "Change submitted to the service platform." if next_state == "REQUEST_COMPLETE" else "",
-        "recommended_next_state": next_state,
-    }
+    return AgentActionResult(
+        agent="service",
+        action="call_service_agent",
+        status="requires_manual_review" if next_state == "REQUEST_ESCALATED" else "success",
+        data={
+            "change_type": change_type,
+            "completed": next_state == "REQUEST_COMPLETE",
+            "manual_approval_required": next_state == "REQUEST_ESCALATED",
+            "confirmation": "Change submitted to the service platform." if next_state == "REQUEST_COMPLETE" else "",
+        },
+        recommended_next_state=next_state,
+        rationale=f"Service change type {change_type} maps to workflow state {next_state}.",
+    ).to_dict()
 
 
 def call_complaint_agent(case: dict[str, Any], state_id: str) -> dict[str, Any]:
     complaint_type = case.get("metadata", {}).get("complaint_type", "general")
     next_state = "REQUEST_ESCALATED" if complaint_type in {"billing_dispute", "regulatory", "unresolved"} else "REQUEST_COMPLETE"
-    return {
-        "agent": "complaint",
-        "sentiment": "highly_negative" if next_state == "REQUEST_ESCALATED" else "recoverable",
-        "resolution_offered": next_state == "REQUEST_COMPLETE",
-        "customer_accepted": next_state == "REQUEST_COMPLETE",
-        "escalation_reason": "Customer remains dissatisfied or issue requires specialist review."
-        if next_state == "REQUEST_ESCALATED"
-        else "",
-        "recommended_next_state": next_state,
-    }
+    return AgentActionResult(
+        agent="complaint",
+        action="call_complaint_agent",
+        status="requires_manual_review" if next_state == "REQUEST_ESCALATED" else "success",
+        data={
+            "complaint_type": complaint_type,
+            "sentiment": "highly_negative" if next_state == "REQUEST_ESCALATED" else "recoverable",
+            "resolution_offered": next_state == "REQUEST_COMPLETE",
+            "customer_accepted": next_state == "REQUEST_COMPLETE",
+            "escalation_reason": "Customer remains dissatisfied or issue requires specialist review."
+            if next_state == "REQUEST_ESCALATED"
+            else "",
+        },
+        recommended_next_state=next_state,
+        rationale=f"Complaint type {complaint_type} maps to workflow state {next_state}.",
+    ).to_dict()
 
 
 def execute_action(
@@ -118,15 +140,19 @@ def call_domain_workflow_agent(case: dict[str, Any], state_id: str, state_spec: 
     """Domain-shaped mock utility agent for generated telecom workflows."""
     allowed_targets = [transition["to"] for transition in state_spec.get("transitions", [])]
     next_state = _next_policy_state(case, state_id, allowed_targets)
-    return {
-        "agent": "domain_workflow",
-        "state_id": state_id,
-        "case_category": case.get("metadata", {}).get("category"),
-        "case_type": _case_type(case),
-        "allowed_targets": allowed_targets,
-        "recommended_next_state": next_state,
-        "rationale": f"{state_id} completed using case metadata and operational policy; next step is {next_state}.",
-    }
+    return AgentActionResult(
+        agent="domain_workflow",
+        action=state_spec.get("action", "call_domain_workflow_agent"),
+        status="success" if next_state != "REQUEST_ESCALATED" else "requires_manual_review",
+        data={
+            "state_id": state_id,
+            "case_category": case.get("metadata", {}).get("category"),
+            "case_type": _case_type(case),
+            "allowed_targets": allowed_targets,
+        },
+        recommended_next_state=next_state,
+        rationale=f"{state_id} completed using case metadata and operational policy; next step is {next_state}.",
+    ).to_dict()
 
 
 def _state_for_category(category: str) -> str:

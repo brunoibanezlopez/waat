@@ -1,0 +1,60 @@
+workflow: SERVICE_REQUEST_MULTITURN
+initial_state: CLASSIFY_REQUEST
+terminal_states:
+  - REQUEST_COMPLETE
+  - REQUEST_ESCALATED
+states:
+  CLASSIFY_REQUEST:
+    action: call_classifier_agent
+    action_params:
+      customer_id: ""
+      request_text: ""
+    transitions:
+      - to: HANDLE_SERVICE_CHANGE
+        condition: action_result.status == "success" and action_result.data.classification == "service_change" and action_result.recommended_next_state == "HANDLE_SERVICE_CHANGE"
+      - to: REQUEST_ESCALATED
+        condition: action_result.data.classification == "unclassifiable_or_sensitive" or action_result.recommended_next_state == "REQUEST_ESCALATED"
+
+  HANDLE_SERVICE_CHANGE:
+    action: call_service_agent
+    action_params:
+      customer_id: ""
+      change_type: ""
+    transitions:
+      - to: CONFIRM_SERVICE_CHANGE
+        condition: action_result.status == "success" and action_result.data.completed == true and action_result.recommended_next_state == "REQUEST_COMPLETE"
+      - to: REQUEST_ESCALATED
+        condition: action_result.status == "requires_manual_review" or action_result.data.manual_approval_required == true or action_result.recommended_next_state == "REQUEST_ESCALATED"
+
+  CONFIRM_SERVICE_CHANGE:
+    action: request_user_confirmation
+    action_params:
+      prompt: "Please confirm you want to submit this service change."
+      confirmation_field: confirmed
+    transitions:
+      - to: SUBMIT_SERVICE_ORDER
+        condition: action_result.data.confirmed == true and action_result.recommended_next_state == "SUBMIT_SERVICE_ORDER"
+      - to: REQUEST_COMPLETE
+        condition: action_result.data.confirmed == false and action_result.recommended_next_state == "REQUEST_COMPLETE"
+
+  SUBMIT_SERVICE_ORDER:
+    action: call_order_submission_agent
+    action_params:
+      customer_id: ""
+      change_type: ""
+    transitions:
+      - to: SEND_CUSTOMER_CONFIRMATION
+        condition: action_result.status == "success" and action_result.recommended_next_state == "SEND_CUSTOMER_CONFIRMATION"
+      - to: REQUEST_ESCALATED
+        condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state == "REQUEST_ESCALATED"
+
+  SEND_CUSTOMER_CONFIRMATION:
+    action: call_notification_agent
+    action_params:
+      customer_id: ""
+      channel: email
+    transitions:
+      - to: REQUEST_COMPLETE
+        condition: action_result.status == "success" and action_result.recommended_next_state == "REQUEST_COMPLETE"
+      - to: REQUEST_ESCALATED
+        condition: action_result.status == "requires_manual_review" or action_result.recommended_next_state == "REQUEST_ESCALATED"
